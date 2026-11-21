@@ -1,0 +1,25 @@
+# Dependencies and Yarn
+node_modules/
+.yarn/*
+!.yarn/releases
+
+# Build and test output
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Local data (SQLite database plus its WAL and shared-memory files)
+*.db
+*.db-wal
+*.db-shm
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
