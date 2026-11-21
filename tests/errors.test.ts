@@ -1,18 +1,22 @@
 import express from 'express';
 import request from 'supertest';
 import { createApp } from '../src/app';
+import { openDatabase } from '../src/db/database';
 import { errorHandler } from '../src/middleware/errors';
 
 describe('error handling', () => {
+  const db = openDatabase(':memory:');
+  afterAll(() => db.close());
+
   it('returns a JSON 404 for unknown routes', async () => {
-    const res = await request(createApp()).get('/nope');
+    const res = await request(createApp({ db })).get('/nope');
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { code: 'not_found', message: 'No route for GET /nope' } });
   });
 
   it('returns 400 for a malformed JSON body', async () => {
-    const res = await request(createApp())
+    const res = await request(createApp({ db }))
       .post('/health')
       .set('Content-Type', 'application/json')
       .send('{"broken":');

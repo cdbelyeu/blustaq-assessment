@@ -15,3 +15,12 @@ test.describe('MVP-9: operator can tell the service is up', () => {
     expect(res.headers()['content-type']).toContain('application/json');
   });
 });
+
+test.describe('MVP-9: operator can tell the service can reach its data', () => {
+  test('database health check responds with ok', async ({ request }) => {
+    const res = await request.get('/health/db');
+
+    expect(res.status()).toBe(200);
+    expect(await res.json()).toEqual({ status: 'ok' });
+  });
+});

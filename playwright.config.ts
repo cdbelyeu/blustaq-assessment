@@ -15,7 +15,7 @@ export default defineConfig({
     : {
         command: 'yarn build && node dist/server.js',
         url: `http://localhost:${port}/health`,
-        env: { PORT: String(port) },
+        env: { PORT: String(port), DATABASE_PATH: ':memory:' },
         reuseExistingServer: false,
       },
 });
