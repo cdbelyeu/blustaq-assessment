@@ -11,22 +11,32 @@ nvm use            # or install Node 24 another way
 corepack enable    # once per machine
 yarn install
 yarn dev           # http://localhost:3000, reloads on change
-curl localhost:3000/health
+curl localhost:3000/health      # process is up
+curl localhost:3000/health/db   # database is reachable and migrated
 ```
+
+Configuration is by environment variable:
+
+| Variable        | Default    | Purpose                                                             |
+| --------------- | ---------- | ------------------------------------------------------------------- |
+| `PORT`          | `3000`     | Port the server listens on.                                         |
+| `DATABASE_PATH` | `notes.db` | SQLite file. Created and migrated on startup; `:memory:` for tests. |
+| `LOG_LEVEL`     | `info`     | pino level (`debug`, `info`, `warn`, `error`, `silent`).            |
 
 | Script                     | What it does                                                                  |
 | -------------------------- | ----------------------------------------------------------------------------- |
 | `yarn dev`                 | Run from source with reload (`tsx watch`).                                    |
 | `yarn build && yarn start` | Compile to `dist/` and run the compiled server.                               |
 | `yarn verify`              | Type-check, lint, format check and tests with coverage. Fails on any problem. |
-| `yarn test`                | Integration tests (Jest + supertest, in-process). Coverage threshold: 90%.    |
+| `yarn test`                | Unit and integration tests (Jest, in-process). Coverage threshold: 90%.       |
 | `yarn test:acceptance`     | Black-box acceptance tests (Playwright) against a real running server.        |
 
 ### Testing approach
 
-There are two test layers with different jobs:
+There are three kinds of test with different jobs:
 
-- **Integration tests** (`tests/`) exercise the app in-process through supertest. They cover edge cases and error paths, and Jest owns the coverage gate.
+- **Unit specs** sit next to the file they test (for example `src/db/database.spec.ts`).
+- **Integration specs** (`tests/`) drive the whole app in-process through supertest against a real in-memory database. They cover edge cases and error paths. Jest owns the coverage gate for both of these.
 - **Acceptance tests** (`acceptance/`) treat the service as a black box. Playwright builds and starts the real server, then talks to it over HTTP only; a lint rule blocks imports from `src/`. Each test is named for the user story it verifies (for example `MVP-9`). Set `BASE_URL` to run the same suite against an already running server or another environment. Playwright was chosen so the suite can be handed to QA and later extended with UI tests.
 
 ## Context and constraints

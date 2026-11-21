@@ -53,5 +53,5 @@ The decisions and standards for this project, kept in one place. Change this fil
 ## Working agreement
 
 - One delivery step at a time, following the plan in the README. Each step ends with a summary of what was done and the checks run, then stops for review.
-- The author reviews and makes every commit. Commit messages use Conventional Commits (`feat:`, `test:`, `chore:`).
+- The author reviews and makes every commit. Commit messages start with a semantic prefix: `New:` for features, `Fix:` for bug fixes, `Chore:` for tooling, structure and docs (for example `New: added database stub with health check`).
 - Docker, CI and a deployment environment are documented as next steps in the README, not built yet.
