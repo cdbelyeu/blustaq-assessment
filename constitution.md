@@ -4,20 +4,20 @@ The decisions and standards for this project, kept in one place. Change this fil
 
 ## Tech stack
 
-| Area            | Choice                                               | Notes                                                                                   |
-| --------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Language        | TypeScript 6.0, strict                               | Pinned below 6.1 until typescript-eslint supports TypeScript 7.                         |
-| Runtime         | Node 24                                              | Pinned in `.nvmrc` and `engines`.                                                       |
-| Framework       | Express 5                                            | Async handler errors reach the error middleware without wrappers.                       |
-| Storage         | SQLite via better-sqlite3                            | One writer at a time; fine for small teams. Raw SQL, no ORM.                            |
-| Migrations      | Numbered `.sql` files in `src/db/migrations`         | Applied once each, in order, at startup. One migration per change.                      |
-| Logging         | pino, structured JSON                                | Configured only in `src/logger.ts`. Level from `LOG_LEVEL` (default `info`).            |
-| Validation      | Zod                                                  | Schemas are the single source for runtime checks and types. Added with the first input. |
-| Package manager | Yarn 4 via Corepack, `node-modules` linker           | Never npm. Commit `yarn.lock`.                                                          |
-| Dev and build   | `tsx watch` for dev, `tsc` to `dist/` for production | `erasableSyntaxOnly` keeps native type stripping an option.                             |
-| Unit and integ. | Jest with `@swc/jest`, supertest, CommonJS output    | `@swc/jest` does not type-check; `yarn typecheck` does.                                 |
-| Acceptance      | Playwright (API only)                                | Black box over HTTP against a real server.                                              |
-| Lint and format | ESLint 10 (type-checked rules) and Prettier          | Prettier on defaults apart from single quotes and 100 columns.                          |
+| Area            | Choice                                               | Notes                                                                        |
+| --------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Language        | TypeScript 6.0, strict                               | Pinned below 6.1 until typescript-eslint supports TypeScript 7.              |
+| Runtime         | Node 24                                              | Pinned in `.nvmrc` and `engines`.                                            |
+| Framework       | Express 5                                            | Async handler errors reach the error middleware without wrappers.            |
+| Storage         | SQLite via better-sqlite3                            | One writer at a time; fine for small teams. Raw SQL, no ORM.                 |
+| Migrations      | Numbered `.sql` files in `src/db/migrations`         | Applied once each, in order, at startup. One migration per change.           |
+| Logging         | pino, structured JSON                                | Configured only in `src/logger.ts`. Level from `LOG_LEVEL` (default `info`). |
+| Validation      | Zod                                                  | Schemas are the single source for runtime checks and types. Strict schemas.  |
+| Package manager | Yarn 4 via Corepack, `node-modules` linker           | Never npm. Commit `yarn.lock`.                                               |
+| Dev and build   | `tsx watch` for dev, `tsc` to `dist/` for production | `erasableSyntaxOnly` keeps native type stripping an option.                  |
+| Unit and integ. | Jest with `@swc/jest`, supertest, CommonJS output    | `@swc/jest` does not type-check; `yarn typecheck` does.                      |
+| Acceptance      | Playwright (API only)                                | Black box over HTTP against a real server.                                   |
+| Lint and format | ESLint 10 (type-checked rules) and Prettier          | Prettier on defaults apart from single quotes and 100 columns.               |
 
 ## Data conventions
 
@@ -30,6 +30,8 @@ The decisions and standards for this project, kept in one place. Change this fil
 
 - Routes handle HTTP only. SQL lives in a repository module under `src/db`, so a database change touches one place.
 - `createApp({ db })` builds the app without listening. `server.ts` is the only file that starts a listener.
+- Errors that map to an HTTP response extend `ApiError` (`src/errors.ts`); the error handler turns them, and Zod validation failures, into the response. Request bodies are validated with strict Zod schemas in `src/routes/schemas.ts`, which also normalize input (for example lowercasing emails).
+- Until the auth step, `src/middleware/auth.ts` is a stub that reads `X-User-Id`. Routes only read `req.user`, so replacing it with bearer tokens changes no route.
 - Every error uses one shape: `{ "error": { "code", "message" } }`. Unknown failures return a generic 500 with no internals.
 - Log through the injected `Logger`, never `console.*` (ESLint enforces it in `src/`). Pass errors as `{ err }` so they serialize with a stack. Never log secrets or note content.
 - Keep exports minimal. Don't code defensively for cases that cannot happen.

@@ -1,8 +1,10 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
+import { ZodError } from 'zod';
+import { ApiError } from '../errors';
 import type { Logger } from '../logger';
 
 export interface ErrorBody {
-  error: { code: string; message: string };
+  error: { code: string; message: string; details?: { path: string; message: string }[] };
 }
 
 export const notFoundHandler: RequestHandler = (req, res) => {
@@ -20,6 +22,27 @@ export function createErrorHandler(logger: Logger): ErrorRequestHandler {
     if (err instanceof SyntaxError && 'body' in err) {
       const body: ErrorBody = {
         error: { code: 'invalid_json', message: 'Request body is not valid JSON' },
+      };
+      res.status(400).json(body);
+      return;
+    }
+
+    if (err instanceof ApiError) {
+      const body: ErrorBody = { error: { code: err.code, message: err.message } };
+      res.status(err.status).json(body);
+      return;
+    }
+
+    if (err instanceof ZodError) {
+      const body: ErrorBody = {
+        error: {
+          code: 'validation_failed',
+          message: 'Request is invalid',
+          details: err.issues.map((issue) => ({
+            path: issue.path.join('.'),
+            message: issue.message,
+          })),
+        },
       };
       res.status(400).json(body);
       return;

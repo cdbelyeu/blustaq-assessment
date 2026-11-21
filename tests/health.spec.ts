@@ -23,9 +23,10 @@ describe('health endpoints', () => {
     });
 
     it('stays up when the database is down', async () => {
+      const app = createApp({ db, logger: silentLogger() });
       db.close();
 
-      const res = await request(createApp({ db, logger: silentLogger() })).get('/health');
+      const res = await request(app).get('/health');
 
       expect(res.status).toBe(200);
     });
@@ -40,10 +41,11 @@ describe('health endpoints', () => {
     });
 
     it('returns 503 without leaking details and logs the failure', async () => {
-      db.close();
       const { logger, entries } = capturingLogger();
+      const app = createApp({ db, logger });
+      db.close();
 
-      const res = await request(createApp({ db, logger })).get('/health/db');
+      const res = await request(app).get('/health/db');
 
       expect(res.status).toBe(503);
       expect(res.body).toEqual({ status: 'unavailable' });

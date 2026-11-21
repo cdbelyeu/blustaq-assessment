@@ -30,7 +30,7 @@ describe('openDatabase', () => {
     const reopened = openDatabase(file);
 
     const applied = reopened.prepare('SELECT name FROM schema_migrations').all();
-    expect(applied).toEqual([{ name: '001_health_check.sql' }]);
+    expect(applied).toEqual([{ name: '001_health_check.sql' }, { name: '002_users.sql' }]);
     reopened.close();
     fs.rmSync(dir, { recursive: true });
   });
