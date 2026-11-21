@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import type { Db } from '../db/database';
+import type { Logger } from '../logger';
 
-export function createHealthRouter(db: Db): Router {
+export function createHealthRouter(db: Db, logger: Logger): Router {
   const router = Router();
 
   // Liveness: the process is up and serving requests.
@@ -15,7 +16,7 @@ export function createHealthRouter(db: Db): Router {
       db.prepare('SELECT message FROM health_check WHERE id = 1').get();
       res.json({ status: 'ok' });
     } catch (err) {
-      console.error('database health check failed', err);
+      logger.error({ err }, 'database health check failed');
       res.status(503).json({ status: 'unavailable' });
     }
   });

@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { createApp } from '../src/app';
 import { openDatabase, type Db } from '../src/db/database';
+import { capturingLogger, silentLogger } from './support/logs';
 
 describe('health endpoints', () => {
   let db: Db;
@@ -15,7 +16,7 @@ describe('health endpoints', () => {
 
   describe('GET /health', () => {
     it('reports the process is up', async () => {
-      const res = await request(createApp({ db })).get('/health');
+      const res = await request(createApp({ db, logger: silentLogger() })).get('/health');
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ status: 'ok' });
@@ -24,7 +25,7 @@ describe('health endpoints', () => {
     it('stays up when the database is down', async () => {
       db.close();
 
-      const res = await request(createApp({ db })).get('/health');
+      const res = await request(createApp({ db, logger: silentLogger() })).get('/health');
 
       expect(res.status).toBe(200);
     });
@@ -32,21 +33,23 @@ describe('health endpoints', () => {
 
   describe('GET /health/db', () => {
     it('reports ok when the database is reachable and migrated', async () => {
-      const res = await request(createApp({ db })).get('/health/db');
+      const res = await request(createApp({ db, logger: silentLogger() })).get('/health/db');
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ status: 'ok' });
     });
 
-    it('returns 503 without leaking details when the database is unavailable', async () => {
+    it('returns 503 without leaking details and logs the failure', async () => {
       db.close();
-      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { logger, entries } = capturingLogger();
 
-      const res = await request(createApp({ db })).get('/health/db');
+      const res = await request(createApp({ db, logger })).get('/health/db');
 
       expect(res.status).toBe(503);
       expect(res.body).toEqual({ status: 'unavailable' });
-      consoleError.mockRestore();
+      expect(entries()).toEqual([
+        expect.objectContaining({ level: 50, msg: 'database health check failed' }),
+      ]);
     });
   });
 });

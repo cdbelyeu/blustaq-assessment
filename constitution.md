@@ -11,6 +11,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 | Framework       | Express 5                                            | Async handler errors reach the error middleware without wrappers.                       |
 | Storage         | SQLite via better-sqlite3                            | One writer at a time; fine for small teams. Raw SQL, no ORM.                            |
 | Migrations      | Numbered `.sql` files in `src/db/migrations`         | Applied once each, in order, at startup. One migration per change.                      |
+| Logging         | pino, structured JSON                                | Configured only in `src/logger.ts`. Level from `LOG_LEVEL` (default `info`).            |
 | Validation      | Zod                                                  | Schemas are the single source for runtime checks and types. Added with the first input. |
 | Package manager | Yarn 4 via Corepack, `node-modules` linker           | Never npm. Commit `yarn.lock`.                                                          |
 | Dev and build   | `tsx watch` for dev, `tsc` to `dist/` for production | `erasableSyntaxOnly` keeps native type stripping an option.                             |
@@ -30,6 +31,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 - Routes handle HTTP only. SQL lives in a repository module under `src/db`, so a database change touches one place.
 - `createApp({ db })` builds the app without listening. `server.ts` is the only file that starts a listener.
 - Every error uses one shape: `{ "error": { "code", "message" } }`. Unknown failures return a generic 500 with no internals.
+- Log through the injected `Logger`, never `console.*` (ESLint enforces it in `src/`). Pass errors as `{ err }` so they serialize with a stack. Never log secrets or note content.
 - Keep exports minimal. Don't code defensively for cases that cannot happen.
 
 ## Quality standards

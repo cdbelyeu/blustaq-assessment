@@ -14,6 +14,11 @@ export default tseslint.config(
     },
   },
   {
+    // Application code logs through the injected logger, never the console.
+    files: ['src/**/*.ts'],
+    rules: { 'no-console': 'error' },
+  },
+  {
     // Acceptance tests are black-box: they may only reach the service over HTTP.
     files: ['acceptance/**/*.ts'],
     rules: {
