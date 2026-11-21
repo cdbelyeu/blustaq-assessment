@@ -37,6 +37,8 @@ The decisions and standards for this project, kept in one place. Change this fil
 - `yarn verify` is the gate: type-check, lint (zero warnings), format check, and tests with coverage. It must pass before a step is done.
 - Coverage threshold is 90% on lines, branches, functions and statements, owned by Jest. Falling below fails the run.
 - Integration tests (`tests/`) run in-process with a real in-memory SQLite database. Mock only at external boundaries, never our own modules.
+- Unit specs sit next to the file they test (`src/db/database.spec.ts`). Specs that drive the whole app through supertest live in `tests/`. Spec files are excluded from coverage and from the production build.
+- Test files are named `<subject>.spec.ts`. Write every test with `it()`, never `test()`, and word its name to read as a sentence after "it" (`it('returns a JSON 404 for unknown routes')`). Playwright only exports `test`, so import it as `it`: `import { test as it, expect } from '@playwright/test'`.
 - Acceptance tests (`acceptance/`) may only reach the service over HTTP. A lint rule blocks imports from `src/`. Test names carry the user story ID (for example `MVP-9`).
 - Comments explain why, not what, and never reference tickets or process.
 - Docs stay lean. This file and the README are the only documents.

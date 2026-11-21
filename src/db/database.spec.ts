@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openDatabase } from '../src/db/database';
+import { openDatabase } from './database';
 
 describe('openDatabase', () => {
   it('creates the health_check table with its single static row', () => {
