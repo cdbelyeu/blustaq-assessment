@@ -23,3 +23,6 @@ test-results/
 # Logs and OS files
 *.log
 .DS_Store
+
+# Assessment brief (not part of the project)
+initial_instructions.txt

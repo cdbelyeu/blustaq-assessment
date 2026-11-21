@@ -13,6 +13,7 @@ yarn install
 yarn dev           # http://localhost:3000, reloads on change
 curl localhost:3000/health      # process is up
 curl localhost:3000/health/db   # database is reachable and migrated
+open http://localhost:3000/docs # interactive API docs (Swagger UI)
 ```
 
 Configuration is by environment variable:
@@ -72,6 +73,7 @@ This section stands in for a project management tool, which is where the roadmap
 | MVP-8  | Validation and a consistent error shape                        | As a **client developer**, I want clear, predictably shaped errors, so that I can handle failures in one place and show users what went wrong.                                                                                                                                                   |
 | MVP-9  | Integration tests, health check, README                        | As an **operator**, I want automated tests and a health check, so that I can change the service with confidence and know when it's down.                                                                                                                                                         |
 | MVP-10 | Self-service accounts (`POST /users`, `/me`)                   | As a **team member**, I want to create my own account and manage my profile, so that I can start using the service without waiting for an administrator.                                                                                                                                         |
+| MVP-11 | Interactive API docs (`/docs`, `/openapi.json`)                | As a **client developer**, I want interactive API docs where I can send real requests, so that I can learn and test the API without writing code first.                                                                                                                                          |
 
 ### MVP delivery plan
 
@@ -81,6 +83,7 @@ Each step is delivered and committed on its own, with tests.
 | --- | ---------------------------------------------- | ------------------------------------------------------------------------------ | ------------ |
 | 1   | `GET /health`                                  | Project scaffold, tooling, both test layers                                    | MVP-9        |
 | 2   | `POST /users`, `GET/PATCH/DELETE /me`          | Users table, self-service registration, temporary `X-User-Id` auth stub        | MVP-10       |
+| 2b  | `GET /docs`, `GET /openapi.json`               | OpenAPI document built from the Zod schemas, Swagger UI to try requests        | MVP-11       |
 | 3   | `POST /notes`                                  | Notes table, create a private note                                             | MVP-1        |
 | 4   | `GET /notes/:id`                               | Read a note                                                                    | MVP-1        |
 | 5   | `GET /notes`                                   | List my notes                                                                  | MVP-6        |
@@ -96,13 +99,12 @@ Sharing gets its own endpoint rather than a field on `PATCH`, so the authorizati
 
 ### M2: useful day to day
 
-| Feature                            | User story                                                                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Full-text search                   | As a **team member**, I want to search notes by keyword, so that I can find a note without remembering where it lives.    |
-| Tags and tag filtering             | As a **team member**, I want to tag notes and filter by tag, so that I can group related notes across topics.             |
-| Soft delete with trash and restore | As a **team member**, I want to restore a note I deleted by mistake, so that one wrong click doesn't lose work.           |
-| Team roles (viewer vs. editor)     | As a **team lead**, I want to give some members read-only access, so that stakeholders can follow along without editing.  |
-| OpenAPI/Swagger docs               | As a **client developer**, I want machine-readable API docs, so that I can explore endpoints and generate a typed client. |
+| Feature                            | User story                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Full-text search                   | As a **team member**, I want to search notes by keyword, so that I can find a note without remembering where it lives.   |
+| Tags and tag filtering             | As a **team member**, I want to tag notes and filter by tag, so that I can group related notes across topics.            |
+| Soft delete with trash and restore | As a **team member**, I want to restore a note I deleted by mistake, so that one wrong click doesn't lose work.          |
+| Team roles (viewer vs. editor)     | As a **team lead**, I want to give some members read-only access, so that stakeholders can follow along without editing. |
 
 ### M3: ready for production
 
