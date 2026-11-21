@@ -21,6 +21,7 @@ interface UserRow {
   display_name: string;
   created_at: string;
   updated_at: string;
+  password_hash: string;
 }
 
 export class EmailTakenError extends ApiError {
@@ -30,8 +31,9 @@ export class EmailTakenError extends ApiError {
 }
 
 export interface UserRepository {
-  create(input: { email: string; displayName: string }): User;
+  create(input: { email: string; displayName: string; passwordHash: string }): User;
   findById(id: string): User | undefined;
+  findCredentialsByEmail(email: string): { user: User; passwordHash: string } | undefined;
   update(user: User, patch: UserPatch): User;
   delete(id: string): void;
 }
@@ -53,20 +55,21 @@ const isUniqueViolation = (err: unknown): boolean =>
 
 export function createUserRepository(db: Db): UserRepository {
   const insert = db.prepare(
-    'INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO users (id, email, display_name, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
   );
   const selectById = db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?');
+  const selectByEmail = db.prepare<[string], UserRow>('SELECT * FROM users WHERE email = ?');
   const updateById = db.prepare(
     'UPDATE users SET email = ?, display_name = ?, updated_at = ? WHERE id = ?',
   );
   const deleteById = db.prepare('DELETE FROM users WHERE id = ?');
 
   return {
-    create({ email, displayName }) {
+    create({ email, displayName, passwordHash }) {
       const now = new Date().toISOString();
       const user: User = { id: randomUUID(), email, displayName, createdAt: now, updatedAt: now };
       try {
-        insert.run(user.id, email, displayName, now, now);
+        insert.run(user.id, email, displayName, passwordHash, now, now);
       } catch (err) {
         throw isUniqueViolation(err) ? new EmailTakenError() : err;
       }
@@ -76,6 +79,11 @@ export function createUserRepository(db: Db): UserRepository {
     findById(id) {
       const row = selectById.get(id);
       return row && toUser(row);
+    },
+
+    findCredentialsByEmail(email) {
+      const row = selectByEmail.get(email);
+      return row && { user: toUser(row), passwordHash: row.password_hash };
     },
 
     update(user, patch) {

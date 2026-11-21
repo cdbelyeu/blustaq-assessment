@@ -1,28 +1,24 @@
-import type { Express } from 'express';
 import request from 'supertest';
-import { createApp } from '../src/app';
-import { openDatabase, type Db } from '../src/db/database';
-import { silentLogger } from './support/logs';
+import { bearer, createTestApp, PASSWORD, type TestApp } from './support/app';
 
 describe('users', () => {
-  let db: Db;
-  let app: Express;
+  let t: TestApp;
 
   beforeEach(() => {
-    db = openDatabase(':memory:');
-    app = createApp({ db, logger: silentLogger() });
+    t = createTestApp();
   });
 
-  afterEach(() => db.close());
+  afterEach(() => t.db.close());
 
-  const register = async (email = 'ada@example.com', displayName = 'Ada') =>
-    (await request(app).post('/users').send({ email, displayName })).body as { id: string };
+  const register = (body: object) => request(t.app).post('/users').send(body);
 
   describe('POST /users', () => {
-    it('registers a user', async () => {
-      const res = await request(app)
-        .post('/users')
-        .send({ email: 'ada@example.com', displayName: 'Ada' });
+    it('registers a user without echoing the password', async () => {
+      const res = await register({
+        email: 'ada@example.com',
+        displayName: 'Ada',
+        password: PASSWORD,
+      });
 
       expect(res.status).toBe(201);
       expect(res.body).toEqual({
@@ -32,28 +28,56 @@ describe('users', () => {
         createdAt: expect.any(String) as string,
         updatedAt: expect.any(String) as string,
       });
+      expect(JSON.stringify(res.body)).not.toContain(PASSWORD);
+    });
+
+    it('stores a salted hash, never the password', async () => {
+      await register({ email: 'ada@example.com', displayName: 'Ada', password: PASSWORD });
+
+      const row = t.db.prepare('SELECT password_hash FROM users').get() as {
+        password_hash: string;
+      };
+
+      expect(row.password_hash).toMatch(/^scrypt\$/);
+      expect(row.password_hash).not.toContain(PASSWORD);
     });
 
     it('normalizes the email to lowercase and trims the name', async () => {
-      const res = await request(app)
-        .post('/users')
-        .send({ email: 'Ada@Example.COM', displayName: '  Ada  ' });
+      const res = await register({
+        email: 'Ada@Example.COM',
+        displayName: '  Ada  ',
+        password: PASSWORD,
+      });
 
       expect(res.body).toMatchObject({ email: 'ada@example.com', displayName: 'Ada' });
     });
 
     it.each([
-      ['a missing email', { displayName: 'Ada' }, 'email'],
-      ['an invalid email', { email: 'not-an-email', displayName: 'Ada' }, 'email'],
-      ['a blank name', { email: 'ada@example.com', displayName: '   ' }, 'displayName'],
+      ['a missing email', { displayName: 'Ada', password: PASSWORD }, 'email'],
+      ['an invalid email', { email: 'nope', displayName: 'Ada', password: PASSWORD }, 'email'],
       [
-        'an overlong name',
-        { email: 'ada@example.com', displayName: 'x'.repeat(101) },
+        'a blank name',
+        { email: 'a@example.com', displayName: '  ', password: PASSWORD },
         'displayName',
       ],
-      ['an unknown field', { email: 'ada@example.com', displayName: 'Ada', role: 'admin' }, ''],
+      ['a missing password', { email: 'a@example.com', displayName: 'Ada' }, 'password'],
+      [
+        'a short password',
+        { email: 'a@example.com', displayName: 'Ada', password: 'short' },
+        'password',
+      ],
+      [
+        'an overlong password',
+        { email: 'a@example.com', displayName: 'Ada', password: 'x'.repeat(129) },
+        'password',
+      ],
+      [
+        'an unknown field',
+        { email: 'a@example.com', displayName: 'Ada', password: PASSWORD, role: 'admin' },
+        '',
+      ],
     ])('rejects %s with details', async (_label, body, path) => {
-      const res = await request(app).post('/users').send(body);
+      const res = await register(body);
 
       expect(res.status).toBe(400);
       expect((res.body as { error: unknown }).error).toMatchObject({
@@ -62,12 +86,29 @@ describe('users', () => {
       });
     });
 
-    it('rejects a duplicate email regardless of case', async () => {
-      await register('ada@example.com');
+    it('accepts passwords at the length limits, with spaces', async () => {
+      const short = await register({
+        email: 'a@example.com',
+        displayName: 'A',
+        password: ' abcdef ',
+      });
+      const long = await register({
+        email: 'b@example.com',
+        displayName: 'B',
+        password: 'x'.repeat(128),
+      });
 
-      const res = await request(app)
-        .post('/users')
-        .send({ email: 'ADA@example.com', displayName: 'Other' });
+      expect([short.status, long.status]).toEqual([201, 201]);
+    });
+
+    it('rejects a duplicate email regardless of case', async () => {
+      await register({ email: 'ada@example.com', displayName: 'Ada', password: PASSWORD });
+
+      const res = await register({
+        email: 'ADA@example.com',
+        displayName: 'Other',
+        password: PASSWORD,
+      });
 
       expect(res.status).toBe(409);
       expect(res.body).toEqual({
@@ -76,91 +117,109 @@ describe('users', () => {
     });
   });
 
-  describe('authentication stub', () => {
-    it.each([
-      ['no header', undefined],
-      ['an unknown user id', 'no-such-user'],
-    ])('returns 401 for %s', async (_label, id) => {
-      const req = request(app).get('/me');
-      const res = await (id ? req.set('X-User-Id', id) : req);
-
-      expect(res.status).toBe(401);
-      expect(res.body).toEqual({
-        error: { code: 'unauthorized', message: 'Authentication required' },
-      });
-    });
-  });
-
   describe('GET /me', () => {
     it('returns the signed-in user', async () => {
-      const { id } = await register();
+      const { id, token } = await t.signUp();
 
-      const res = await request(app).get('/me').set('X-User-Id', id);
+      const res = await request(t.app)
+        .get('/me')
+        .set(...bearer(token));
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ id, email: 'ada@example.com', displayName: 'Ada' });
+      expect(JSON.stringify(res.body)).not.toContain('password');
     });
   });
 
   describe('PATCH /me', () => {
     it('updates the profile', async () => {
-      const { id } = await register();
+      const { token } = await t.signUp();
 
-      const res = await request(app)
+      const res = await request(t.app)
         .patch('/me')
-        .set('X-User-Id', id)
+        .set(...bearer(token))
         .send({ displayName: 'Ada Lovelace' });
 
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ displayName: 'Ada Lovelace', email: 'ada@example.com' });
-      const reread = await request(app).get('/me').set('X-User-Id', id);
+      const reread = await request(t.app)
+        .get('/me')
+        .set(...bearer(token));
       expect(reread.body).toEqual(res.body);
     });
 
-    it('rejects an empty update', async () => {
-      const { id } = await register();
+    it('does not change the password through the profile', async () => {
+      const { token } = await t.signUp();
 
-      const res = await request(app).patch('/me').set('X-User-Id', id).send({});
+      const res = await request(t.app)
+        .patch('/me')
+        .set(...bearer(token))
+        .send({ password: 'a brand new password' });
+
+      expect(res.status).toBe(400);
+      expect(await t.signIn('ada@example.com')).toBeDefined();
+    });
+
+    it('rejects an empty update', async () => {
+      const { token } = await t.signUp();
+
+      const res = await request(t.app)
+        .patch('/me')
+        .set(...bearer(token))
+        .send({});
 
       expect(res.status).toBe(400);
     });
 
     it('rejects changing the email to one already registered', async () => {
-      await register('ada@example.com');
-      const { id } = await register('grace@example.com', 'Grace');
+      await t.signUp('ada@example.com');
+      const { token } = await t.signUp('grace@example.com', 'Grace');
 
-      const res = await request(app)
+      const res = await request(t.app)
         .patch('/me')
-        .set('X-User-Id', id)
+        .set(...bearer(token))
         .send({ email: 'ada@example.com' });
 
       expect(res.status).toBe(409);
     });
 
     it('requires authentication', async () => {
-      const res = await request(app).patch('/me').send({ displayName: 'x' });
+      const res = await request(t.app).patch('/me').send({ displayName: 'x' });
 
       expect(res.status).toBe(401);
     });
   });
 
   describe('DELETE /me', () => {
-    it('deletes the account', async () => {
-      const { id } = await register();
+    it('deletes the account and ends its sessions', async () => {
+      const { token } = await t.signUp();
 
-      const res = await request(app).delete('/me').set('X-User-Id', id);
+      const res = await request(t.app)
+        .delete('/me')
+        .set(...bearer(token));
 
       expect(res.status).toBe(204);
-      expect((await request(app).get('/me').set('X-User-Id', id)).status).toBe(401);
+      expect(
+        (
+          await request(t.app)
+            .get('/me')
+            .set(...bearer(token))
+        ).status,
+      ).toBe(401);
+      expect(t.db.prepare('SELECT COUNT(*) AS n FROM sessions').get()).toEqual({ n: 0 });
     });
 
     it('lets the email be registered again afterwards', async () => {
-      const { id } = await register();
-      await request(app).delete('/me').set('X-User-Id', id);
+      const { token } = await t.signUp();
+      await request(t.app)
+        .delete('/me')
+        .set(...bearer(token));
 
-      const res = await request(app)
-        .post('/users')
-        .send({ email: 'ada@example.com', displayName: 'Ada' });
+      const res = await register({
+        email: 'ada@example.com',
+        displayName: 'Ada',
+        password: PASSWORD,
+      });
 
       expect(res.status).toBe(201);
     });

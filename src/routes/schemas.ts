@@ -6,7 +6,15 @@ const email = z
   .transform((value) => value.toLowerCase());
 const displayName = z.string().trim().min(1).max(100);
 
-export const createUserBody = z.strictObject({ email, displayName });
+// Length is what matters; there are no composition rules. Not trimmed. The cap bounds hashing work.
+const newPassword = z.string().min(8).max(128).meta({ format: 'password' });
+
+export const createUserBody = z.strictObject({ email, displayName, password: newPassword });
+
+export const createSessionBody = z.strictObject({
+  email,
+  password: z.string().min(1).max(128).meta({ format: 'password' }),
+});
 
 export const updateUserBody = z
   .strictObject({ email: email.optional(), displayName: displayName.optional() })
@@ -20,6 +28,8 @@ export const userResponse = z.object({
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
+
+export const sessionResponse = z.object({ token: z.string(), expiresAt: z.iso.datetime() });
 
 export const errorResponse = z.object({
   error: z.object({

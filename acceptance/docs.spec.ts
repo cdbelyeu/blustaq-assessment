@@ -8,7 +8,14 @@ it.describe('MVP-11: a client developer can explore the API interactively', () =
     const doc = (await res.json()) as { openapi: string; paths: Record<string, unknown> };
     expect(doc.openapi).toMatch(/^3\.1/);
     expect(Object.keys(doc.paths)).toEqual(
-      expect.arrayContaining(['/users', '/me', '/health', '/health/db']),
+      expect.arrayContaining([
+        '/users',
+        '/sessions',
+        '/sessions/current',
+        '/me',
+        '/health',
+        '/health/db',
+      ]),
     );
   });
 

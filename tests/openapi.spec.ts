@@ -1,33 +1,33 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
-import type { Express } from 'express';
 import type { OpenAPI } from 'openapi-types';
 import request from 'supertest';
-import { createApp } from '../src/app';
-import { openDatabase, type Db } from '../src/db/database';
 import { buildOpenApiDocument } from '../src/openapi';
-import { errorResponse, healthResponse, userResponse } from '../src/routes/schemas';
-import { silentLogger } from './support/logs';
+import {
+  errorResponse,
+  healthResponse,
+  sessionResponse,
+  userResponse,
+} from '../src/routes/schemas';
+import { bearer, createTestApp, PASSWORD, type TestApp } from './support/app';
 
 describe('API documentation', () => {
-  let db: Db;
-  let app: Express;
+  let t: TestApp;
 
   beforeEach(() => {
-    db = openDatabase(':memory:');
-    app = createApp({ db, logger: silentLogger() });
+    t = createTestApp();
   });
 
-  afterEach(() => db.close());
+  afterEach(() => t.db.close());
 
   it('serves the OpenAPI document as JSON', async () => {
-    const res = await request(app).get('/openapi.json');
+    const res = await request(t.app).get('/openapi.json');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ openapi: '3.1.0', info: { title: 'Team Notes API' } });
   });
 
   it('serves an interactive UI', async () => {
-    const res = await request(app).get('/docs/');
+    const res = await request(t.app).get('/docs/');
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
@@ -45,7 +45,7 @@ describe('API documentation', () => {
 
     for (const [path, operations] of Object.entries(paths)) {
       for (const method of Object.keys(operations)) {
-        const res = await request(app)[method as 'get'](path);
+        const res = await request(t.app)[method as 'get'](path);
 
         // Only the router's own fallback uses this code; a real 404 for a resource has its own.
         const unrouted =
@@ -64,6 +64,7 @@ describe('API documentation', () => {
       User: userResponse,
       Error: errorResponse,
       Health: healthResponse,
+      Session: sessionResponse,
     };
     const doc = buildOpenApiDocument() as {
       paths: Record<string, Record<string, { responses: Record<string, Response> }>>;
@@ -89,34 +90,40 @@ describe('API documentation', () => {
   });
 
   describe('real responses match the documented shapes', () => {
-    it('for a registered user', async () => {
-      const res = await request(app)
+    it('for a registered user and a session', async () => {
+      const registered = await request(t.app)
         .post('/users')
-        .send({ email: 'ada@example.com', displayName: 'Ada' });
-
-      expect(userResponse.safeParse(res.body).success).toBe(true);
-      const me = await request(app)
+        .send({ email: 'ada@example.com', displayName: 'Ada', password: PASSWORD });
+      const session = await request(t.app)
+        .post('/sessions')
+        .send({ email: 'ada@example.com', password: PASSWORD });
+      const me = await request(t.app)
         .get('/me')
-        .set('X-User-Id', (res.body as { id: string }).id);
+        .set(...bearer((session.body as { token: string }).token));
+
+      expect(userResponse.safeParse(registered.body).success).toBe(true);
+      expect(sessionResponse.safeParse(session.body).success).toBe(true);
       expect(userResponse.safeParse(me.body).success).toBe(true);
     });
 
-    it('for validation, conflict and authentication errors', async () => {
-      const invalid = await request(app).post('/users').send({ email: 'nope' });
-      await request(app).post('/users').send({ email: 'a@example.com', displayName: 'A' });
-      const duplicate = await request(app)
-        .post('/users')
-        .send({ email: 'a@example.com', displayName: 'A' });
-      const anonymous = await request(app).get('/me');
+    it('for validation, conflict, credential and authentication errors', async () => {
+      const body = { email: 'a@example.com', displayName: 'A', password: PASSWORD };
+      const invalid = await request(t.app).post('/users').send({ email: 'nope' });
+      await request(t.app).post('/users').send(body);
+      const duplicate = await request(t.app).post('/users').send(body);
+      const badLogin = await request(t.app)
+        .post('/sessions')
+        .send({ email: 'a@example.com', password: 'wrong password' });
+      const anonymous = await request(t.app).get('/me');
 
-      for (const res of [invalid, duplicate, anonymous]) {
+      for (const res of [invalid, duplicate, badLogin, anonymous]) {
         expect(errorResponse.safeParse(res.body).success).toBe(true);
       }
     });
 
     it('for health checks', async () => {
-      const up = await request(app).get('/health');
-      const readiness = await request(app).get('/health/db');
+      const up = await request(t.app).get('/health');
+      const readiness = await request(t.app).get('/health/db');
 
       expect(healthResponse.safeParse(up.body).success).toBe(true);
       expect(healthResponse.safeParse(readiness.body).success).toBe(true);

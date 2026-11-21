@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import {
+  createSessionBody,
   createUserBody,
   errorResponse,
   healthResponse,
+  sessionResponse,
   updateUserBody,
   userResponse,
 } from './routes/schemas';
@@ -33,9 +35,13 @@ const userExample = {
   createdAt: '2026-11-21T22:02:27.000Z',
   updatedAt: '2026-11-21T22:02:27.000Z',
 };
+const sessionExample = {
+  token: 'q8Zr0h2n6mXk4V9yT1wLpB3sD7fGjC5aE-uHiOcNdMg',
+  expiresAt: '2026-11-21T22:32:27.000Z',
+};
 const errorExample = (code: string, message: string) => ({ error: { code, message } });
 const errorRef = (name: string): Json => ({ $ref: `#/components/responses/${name}` });
-const signedIn = [{ UserId: [] }];
+const signedIn = [{ BearerAuth: [] }];
 
 export function buildOpenApiDocument(): Json {
   return {
@@ -44,12 +50,14 @@ export function buildOpenApiDocument(): Json {
       title: 'Team Notes API',
       version: '0.1.0',
       description:
-        'A note-taking service shared among small teams. Use **Authorize** to set the `X-User-Id` ' +
-        'header, then **Try it out** on any endpoint.',
+        'A note-taking service shared among small teams. To try it: register with `POST /users`, ' +
+        'sign in with `POST /sessions`, paste the returned token into **Authorize**, then use ' +
+        '**Try it out** on any endpoint. Sessions expire 30 minutes after sign-in.',
     },
     servers: [{ url: '/' }],
     tags: [
       { name: 'Accounts', description: 'Create and manage your own account.' },
+      { name: 'Sessions', description: 'Sign in to get a token, and sign out to end it.' },
       { name: 'Health', description: 'Is the service up, and can it reach its data?' },
     ],
     paths: {
@@ -64,6 +72,7 @@ export function buildOpenApiDocument(): Json {
             content: json(ref('CreateUserRequest'), {
               email: 'ada@example.com',
               displayName: 'Ada Lovelace',
+              password: 'correct horse battery',
             }),
           },
           responses: {
@@ -71,6 +80,40 @@ export function buildOpenApiDocument(): Json {
             '400': errorRef('ValidationFailed'),
             '409': errorRef('EmailTaken'),
           },
+        },
+      },
+      '/sessions': {
+        post: {
+          tags: ['Sessions'],
+          summary: 'Sign in',
+          description:
+            'Returns a bearer token, shown only once. It stops working at `expiresAt`, 30 minutes ' +
+            'after sign-in, and cannot be extended: sign in again.',
+          requestBody: {
+            required: true,
+            content: json(ref('CreateSessionRequest'), {
+              email: 'ada@example.com',
+              password: 'correct horse battery',
+            }),
+          },
+          responses: {
+            '201': response('A new session.', ref('Session'), sessionExample),
+            '400': errorRef('ValidationFailed'),
+            '401': response(
+              'Wrong email or password. The response is the same for both.',
+              ref('Error'),
+              errorExample('invalid_credentials', 'Invalid email or password'),
+            ),
+          },
+        },
+      },
+      '/sessions/current': {
+        delete: {
+          tags: ['Sessions'],
+          summary: 'Sign out',
+          description: 'Ends the session this request is using, immediately.',
+          security: signedIn,
+          responses: { '204': response('Signed out.'), '401': errorRef('Unauthorized') },
         },
       },
       '/me': {
@@ -131,24 +174,24 @@ export function buildOpenApiDocument(): Json {
     },
     components: {
       securitySchemes: {
-        UserId: {
-          type: 'apiKey',
-          in: 'header',
-          name: 'X-User-Id',
-          description:
-            'Temporary: paste the `id` returned by `POST /users`. Replaced by bearer tokens.',
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          description: 'The `token` returned by `POST /sessions`.',
         },
       },
       schemas: {
         User: schemaOf(userResponse, 'output'),
         CreateUserRequest: schemaOf(createUserBody, 'input'),
         UpdateUserRequest: schemaOf(updateUserBody, 'input'),
+        CreateSessionRequest: schemaOf(createSessionBody, 'input'),
+        Session: schemaOf(sessionResponse, 'output'),
         Error: schemaOf(errorResponse, 'output'),
         Health: schemaOf(healthResponse, 'output'),
       },
       responses: {
         Unauthorized: response(
-          'Missing or unknown `X-User-Id`.',
+          'Missing, malformed, unknown or expired token.',
           ref('Error'),
           errorExample('unauthorized', 'Authentication required'),
         ),

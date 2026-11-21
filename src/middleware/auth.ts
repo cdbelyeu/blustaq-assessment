@@ -1,15 +1,23 @@
 import type { RequestHandler } from 'express';
+import { hashToken } from '../auth/tokens';
+import type { SessionRepository } from '../db/sessions';
 import { ApiError } from '../errors';
-import type { UserRepository } from '../db/users';
 
-// Temporary stand-in for bearer-token auth: the caller names themselves in X-User-Id.
-// Replaced by token lookup in the auth step; routes only ever read `req.user`.
-export function createAuthStub(users: UserRepository): RequestHandler {
-  return (req, _res, next) => {
-    const id = req.header('X-User-Id');
-    const user = id ? users.findById(id) : undefined;
-    if (!user) throw new ApiError(401, 'unauthorized', 'Authentication required');
+export type Clock = () => Date;
+
+const BEARER = /^Bearer (\S+)$/;
+
+export function createAuth(sessions: SessionRepository, clock: Clock): RequestHandler {
+  return (req, res, next) => {
+    const token = BEARER.exec(req.header('Authorization') ?? '')?.[1];
+    const tokenHash = token && hashToken(token);
+    const user = tokenHash ? sessions.findUser(tokenHash, clock()) : undefined;
+    if (!tokenHash || !user) {
+      res.set('WWW-Authenticate', 'Bearer');
+      throw new ApiError(401, 'unauthorized', 'Authentication required');
+    }
     req.user = user;
+    req.sessionTokenHash = tokenHash;
     next();
   };
 }
