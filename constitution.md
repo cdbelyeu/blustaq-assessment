@@ -24,6 +24,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 - IDs are UUIDs, so they cannot be guessed or counted.
 - Timestamps are ISO 8601 text in UTC.
 - A note's body is a `TEXT` column placed last in the table. List endpoints never return it.
+- Deleting a user deletes their notes (`ON DELETE CASCADE` on the note owner). This includes notes they shared with a team.
 - The schema grows one migration at a time as features need it. No tables ahead of their feature.
 
 ## Architecture
