@@ -28,7 +28,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 - A note's body is a `TEXT` column placed last in the table. List endpoints never return it.
 - Deleting a user deletes their notes (`ON DELETE CASCADE` on the note owner). This includes notes they shared with a team.
 - A write that changes nothing is not a change: no new `version` and no new `updatedAt`. The version check (`WHERE ... AND version = ?`) and the version increase are in the same SQL statement as the change, so a stale edit can never overwrite newer work.
-- Editing a note requires `If-Match` carrying its strong ETag, `"<version>"`. Missing is `428`, malformed is `400`, stale is `412`. ETags on notes are set explicitly, never left to Express's automatic weak ETags. Checks run in this order: access (`404`), body (`400`), header, version (`412`).
+- Editing or deleting a note requires `If-Match` carrying its strong ETag, `"<version>"`. Missing is `428`, malformed is `400`, stale is `412`. ETags on notes are set explicitly, never left to Express's automatic weak ETags. Checks run in this order: access (`404`), body (`400`), header, version (`412`).
 - Lists are cursor-paginated with a keyset on `(updated_at, id)`: fetch one extra row to know whether a next page exists, return an opaque cursor, and never include the note body. A bad cursor or limit is a `400`.
 - Index every foreign key column; SQLite does not do it for you. The list query's index order (`owner_id, updated_at DESC, id DESC`) matches its sort, and a test checks the query plan.
 - `notes.owner_id` is nullable, reserved for team ownership. Nothing creates an ownerless note and no one can read one, because access is "the owner".
@@ -62,7 +62,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 
 - Someone outside a note's team gets `404`, not `403`, so a note's existence is not revealed.
 - Access rules live in `src/policies`. Routes call them and answer any denial with `404 note_not_found`, so a missing note and someone else's note look identical.
-- Team members can read and edit a shared note. Only the owner can delete it or change who it is shared with.
+- Team members can read and edit a shared note. Only the owner can delete it or change who it is shared with. The policy has `canRead`, `canEdit` and `canDelete`, which are identical until sharing exists.
 
 ## Working agreement
 

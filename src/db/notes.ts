@@ -44,6 +44,9 @@ export interface NoteRepository {
   // throws VersionConflictError. If nothing differs, the note is returned untouched: no new
   // version and no new edit time.
   update(note: Note, patch: NotePatch, expectedVersion: number): Note;
+  // Removes the note for good, but only if it is still at `expectedVersion`; otherwise throws
+  // VersionConflictError.
+  delete(note: Note, expectedVersion: number): void;
   // Newest edit first, then by id, so the order is total even when timestamps tie.
   listByOwner(ownerId: string, limit: number, after?: PageCursor): NotePage;
 }
@@ -104,6 +107,12 @@ const UPDATE_NOTE = `
             body
 `;
 
+const DELETE_NOTE = `
+  DELETE FROM notes
+  WHERE id = ?
+    AND version = ?
+`;
+
 // The list queries leave out body, so a page never reads the large column.
 // Exported so a test can check their query plans against the real statements.
 export const LIST_NOTES_FIRST_PAGE = `
@@ -148,6 +157,7 @@ export function createNoteRepository(db: Db, clock: Clock = systemClock): NoteRe
   const insert = db.prepare(INSERT_NOTE);
   const selectById = db.prepare<[string], NoteRow>(SELECT_NOTE_BY_ID);
   const updateById = db.prepare<[string, string, string, string, number], NoteRow>(UPDATE_NOTE);
+  const deleteById = db.prepare(DELETE_NOTE);
   const listFirstPage = db.prepare<[string, number], SummaryRow>(LIST_NOTES_FIRST_PAGE);
   const listAfter = db.prepare<[string, string, string, number], SummaryRow>(LIST_NOTES_AFTER);
 
@@ -183,6 +193,12 @@ export function createNoteRepository(db: Db, clock: Clock = systemClock): NoteRe
       // No row means the stored version is no longer the one expected.
       if (!row) throw new VersionConflictError();
       return toNote(row);
+    },
+
+    delete(note, expectedVersion) {
+      if (note.version !== expectedVersion) throw new VersionConflictError();
+      // No row deleted means the stored version is no longer the one expected.
+      if (deleteById.run(note.id, expectedVersion).changes === 0) throw new VersionConflictError();
     },
 
     listByOwner(ownerId, limit, after) {

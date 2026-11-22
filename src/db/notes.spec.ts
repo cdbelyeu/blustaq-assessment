@@ -322,4 +322,64 @@ describe('note repository', () => {
       ]);
     });
   });
+
+  describe('delete', () => {
+    let now: Date;
+    let editable: NoteRepository;
+
+    beforeEach(() => {
+      now = new Date('2026-01-01T00:00:00.000Z');
+      editable = createNoteRepository(db, () => now);
+    });
+
+    it('removes the note for good', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+
+      editable.delete(note, note.version);
+
+      expect(editable.findById(note.id)).toBeUndefined();
+      expect(editable.listByOwner(owner.id, 10).items).toEqual([]);
+    });
+
+    it("leaves the owner's other notes alone", () => {
+      const a = editable.create({ ownerId: owner.id, title: 'A', body: '' });
+      const b = editable.create({ ownerId: owner.id, title: 'B', body: '' });
+
+      editable.delete(a, a.version);
+
+      expect(editable.findById(b.id)).toEqual(b);
+    });
+
+    it('refuses an out-of-date version, and keeps the note', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      const current = editable.update(note, { title: 'B' }, note.version);
+
+      expect(() => editable.delete(current, 1)).toThrow(VersionConflictError);
+
+      expect(editable.findById(note.id)).toEqual(current);
+    });
+
+    it('refuses a version from the future', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+
+      expect(() => editable.delete(note, 2)).toThrow(VersionConflictError);
+      expect(editable.findById(note.id)).toEqual(note);
+    });
+
+    it('catches a stale copy even when the version it carries looks current', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      editable.update(note, { title: 'B' }, note.version);
+
+      // `note` still says version 1, but the stored note is at version 2.
+      expect(() => editable.delete(note, note.version)).toThrow(VersionConflictError);
+      expect(editable.findById(note.id)).toMatchObject({ title: 'B', version: 2 });
+    });
+
+    it('refuses to delete a note that is already gone', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      editable.delete(note, note.version);
+
+      expect(() => editable.delete(note, note.version)).toThrow(VersionConflictError);
+    });
+  });
 });

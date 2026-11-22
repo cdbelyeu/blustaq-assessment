@@ -1,6 +1,6 @@
 import type { Note } from '../db/notes';
 import type { User } from '../db/users';
-import { canEdit, canRead } from './notes';
+import { canDelete, canEdit, canRead } from './notes';
 
 const user = (id: string): User => ({
   id,
@@ -45,5 +45,19 @@ describe('note edit policy', () => {
 
   it('does not let anyone edit a note with no owner', () => {
     expect(canEdit(user('ada'), note(null))).toBe(false);
+  });
+});
+
+describe('note delete policy', () => {
+  it('lets the owner delete their note', () => {
+    expect(canDelete(user('ada'), note('ada'))).toBe(true);
+  });
+
+  it("does not let anyone else delete someone's note", () => {
+    expect(canDelete(user('grace'), note('ada'))).toBe(false);
+  });
+
+  it('does not let anyone delete a note with no owner', () => {
+    expect(canDelete(user('ada'), note(null))).toBe(false);
   });
 });

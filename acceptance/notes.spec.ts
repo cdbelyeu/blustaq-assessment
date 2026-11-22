@@ -350,3 +350,81 @@ it.describe('MVP-7: an edit from an out-of-date copy cannot overwrite newer work
     expect(res.status()).toBe(304);
   });
 });
+
+it.describe('MVP-1: a team member can delete their notes', () => {
+  const remove = async (request: Api, headers: Headers, id: string, ifMatch?: string) => {
+    const etag = ifMatch ?? (await request.get(`/notes/${id}`, { headers })).headers()['etag'];
+    return request.delete(`/notes/${id}`, { headers: { ...headers, 'If-Match': etag ?? '"1"' } });
+  };
+
+  it('deletes a note, and it is gone', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await remove(request, headers, note.id);
+
+    expect(res.status()).toBe(204);
+    expect((await request.get(`/notes/${note.id}`, { headers })).status()).toBe(404);
+    expect((await remove(request, headers, note.id, '"1"')).status()).toBe(404);
+  });
+
+  it('removes the note from their list and keeps the rest', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const keep = await createNote(request, headers, { title: 'keep', body: '' });
+    const gone = await createNote(request, headers, { title: 'gone', body: '' });
+
+    await remove(request, headers, gone.id);
+
+    const list = await request.get('/notes', { headers });
+    const page = (await list.json()) as { items: { id: string }[] };
+    expect(page.items.map((n) => n.id)).toEqual([keep.id]);
+  });
+
+  it('refuses to delete a note that changed since it was read', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+    await edit(request, headers, note.id, { body: 'newer work' }, '"1"');
+
+    const res = await remove(request, headers, note.id, '"1"');
+
+    expect(res.status()).toBe(412);
+    const kept = await request.get(`/notes/${note.id}`, { headers });
+    expect(await kept.json()).toMatchObject({ body: 'newer work', version: 2 });
+  });
+
+  it('refuses a delete with no If-Match', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await request.delete(`/notes/${note.id}`, { headers });
+
+    expect(res.status()).toBe(428);
+    expect((await request.get(`/notes/${note.id}`, { headers })).status()).toBe(200);
+  });
+
+  it("will not delete someone else's note, and leaves it in place", async ({ request }) => {
+    const owner = await signedInUser(request);
+    const other = await signedInUser(request);
+    const note = await createNote(request, owner.headers);
+
+    const attempt = await remove(request, other.headers, note.id, '"1"');
+    const missing = await remove(
+      request,
+      other.headers,
+      '00000000-0000-4000-8000-000000000000',
+      '"1"',
+    );
+
+    expect(attempt.status()).toBe(404);
+    expect(await attempt.json()).toEqual(await missing.json());
+    expect((await request.get(`/notes/${note.id}`, { headers: owner.headers })).status()).toBe(200);
+  });
+
+  it('requires a signed-in user', async ({ request }) => {
+    const res = await request.delete('/notes/00000000-0000-4000-8000-000000000000', {
+      headers: { 'If-Match': '"1"' },
+    });
+
+    expect(res.status()).toBe(401);
+  });
+});

@@ -72,6 +72,14 @@ const errorExample = (code: string, message: string) => ({ error: { code, messag
 const errorRef = (name: string): Json => ({ $ref: `#/components/responses/${name}` });
 const signedIn = [{ BearerAuth: [] }];
 
+const ifMatchParameter: Json = {
+  name: 'If-Match',
+  in: 'header',
+  required: true,
+  description: 'The note\'s ETag from your last read, such as `"3"`.',
+  schema: { type: 'string', example: '"1"' },
+};
+
 const etagHeader: Json = {
   ETag: {
     description: "The note's version as a strong ETag. Send it back in `If-Match` when editing.",
@@ -240,13 +248,7 @@ export function buildOpenApiDocument(): Json {
           security: signedIn,
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-            {
-              name: 'If-Match',
-              in: 'header',
-              required: true,
-              description: 'The note\'s ETag from your last read, such as `"3"`.',
-              schema: { type: 'string', example: '"1"' },
-            },
+            ifMatchParameter,
           ],
           requestBody: {
             required: true,
@@ -266,6 +268,30 @@ export function buildOpenApiDocument(): Json {
             '404': errorRef('NoteNotFound'),
             '412': errorRef('VersionConflict'),
             '413': errorRef('PayloadTooLarge'),
+            '428': errorRef('PreconditionRequired'),
+          },
+        },
+        delete: {
+          tags: ['Notes'],
+          summary: 'Delete a note',
+          description:
+            'Permanent: there is no trash yet. **`If-Match` is required**, so you cannot delete a ' +
+            'note that has changed since you last read it; fetch it again first.',
+          security: signedIn,
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            ifMatchParameter,
+          ],
+          responses: {
+            '204': response('The note is gone.'),
+            '400': response(
+              '`If-Match` is not a single ETag such as `"3"`.',
+              ref('Error'),
+              errorExample('invalid_if_match', 'If-Match must be one ETag, such as "3"'),
+            ),
+            '401': errorRef('Unauthorized'),
+            '404': errorRef('NoteNotFound'),
+            '412': errorRef('VersionConflict'),
             '428': errorRef('PreconditionRequired'),
           },
         },

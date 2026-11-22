@@ -6,3 +6,5 @@ import type { User } from '../db/users';
 export const canRead = (user: User, note: Note): boolean => note.ownerId === user.id;
 
 export const canEdit = (user: User, note: Note): boolean => note.ownerId === user.id;
+
+export const canDelete = (user: User, note: Note): boolean => note.ownerId === user.id;

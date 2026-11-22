@@ -97,7 +97,7 @@ Each step is delivered and committed on its own, with tests.
 | 5   | `GET /notes/:id`                             | Read a note                                                                            | MVP-1        |
 | 6   | `GET /notes`                                 | List my notes, cursor-paginated                                                        | MVP-6        |
 | 7   | `PATCH /notes/:id`                           | Update title and body, guarded by `If-Match`                                           | MVP-1, MVP-7 |
-| 8   | `DELETE /notes/:id`                          | Owner deletes a note                                                                   | MVP-1, MVP-4 |
+| 8   | `DELETE /notes/:id`                          | Owner deletes a note, guarded by `If-Match`                                            | MVP-1, MVP-4 |
 | 9   | `GET /teams`, `GET /teams/:id/members`       | Teams and memberships, seeded                                                          | MVP-2        |
 | 10  | `PUT /notes/:id/sharing`                     | Owner shares or unshares; team members can read and edit                               | MVP-3, MVP-4 |
 | 11  | `GET /notes?scope=mine\|team`                | Scope filter: my notes, or notes shared with my teams                                  | MVP-6        |
@@ -146,6 +146,21 @@ Sharing gets its own endpoint rather than a field on `PATCH`, so the authorizati
 - **Notifications:** depends on delivery channels the service doesn't own.
 - **Any frontend:** the deliverable is the API.
 
+## Design choices
+
+My default is the simplest, most conventional solution to a problem. I depart from it only for a strong, specific reason. A product's advantage comes from which features it chooses to build, not from solving ordinary problems in unusual ways. The choices below are the ones where I weighed real alternatives.
+
+### Database: SQLite now, Postgres later
+
+SQLite through better-sqlite3 is the database for this exercise. The data is relational (users, teams, notes, sharing) and the authorization rules are joins, so a relational store fits. SQLite is the cheapest one to run:
+
+- **Local development and tests need nothing installed.** The server creates and migrates a file on startup. Tests run the same migrations against an in-memory database, so the test suite exercises real SQL and nothing is mocked.
+- **The path to Postgres is short.** All SQL lives in the repository modules under `src/db`, and the schema lives in numbered `.sql` migrations. Moving means rewriting the dialect differences (placeholders, timestamp types), swapping the driver and migration runner, and making the repository functions async. Routes, validation and authorization don't change.
+
+The cost is a single writer at a time, which is fine for small teams on one instance and is the first thing to outgrow (see [Tradeoffs](#tradeoffs-and-known-limitations)).
+
+If note bodies grow large or heavily read, the next step is to split them out of `notes` into their own table keyed by note ID, or into a document store. Lists, sharing checks and joins would then run over small rows only. The body is already the last column and is never returned by list endpoints, so the code is shaped for that split. Sharding is out of scope; a single database is the right size for this problem.
+
 ## Tradeoffs and known limitations
 
 Choices made deliberately for the scope of this exercise, and what they cost.
@@ -157,7 +172,7 @@ Choices made deliberately for the scope of this exercise, and what they cost.
 - A note body is capped at 100 KB (UTF-8 bytes). That bounds what one request can store and keeps reads and lists small, at the cost of very long documents. Raising it safely means serving a note's content in pages, which is listed under M2.
 - Lists are ordered by last edit, newest first, and paged with a cursor on `(updated_at, id)`. A note edited while someone is paging moves to the top and can be missed in that pass, in exchange for a cheap query that never skips or repeats notes that did not change.
 - Edits are guarded by `If-Match` with the note's version as a strong ETag. A stale edit gets `412` and nothing is overwritten, but there is no merge: the client must fetch the note again and reapply its change. `If-Match` is required, so a client that skips it gets `428`; `*` and lists of ETags are not supported.
-- Deleting a note is permanent. Recovery depends on soft delete with trash and restore, listed under M2.
+- Deleting a note is permanent, and like editing it needs the note's current `If-Match`, so a client cannot delete work it has not seen. Recovery depends on soft delete with trash and restore, listed under M2.
 - Expired sessions are ignored but never deleted, so the `sessions` table only grows. A scheduled purge is listed under technical next steps.
 
 **Authentication**

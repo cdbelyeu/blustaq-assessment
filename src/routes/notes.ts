@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import type { NoteRepository } from '../db/notes';
 import { ApiError } from '../errors';
 import { decodeCursor, encodeCursor } from '../pagination';
-import { canEdit, canRead } from '../policies/notes';
+import { canDelete, canEdit, canRead } from '../policies/notes';
 import { createNoteBody, listNotesQuery, updateNoteBody } from './schemas';
 
 // The ETag of a note is its version, as a strong ETag. Set explicitly so Express's automatic
@@ -60,6 +60,15 @@ export function createNotesRouter(notes: NoteRepository): Router {
     const updated = notes.update(note, patch, expectedVersion(req));
     setEtag(res, updated);
     res.json(updated);
+  });
+
+  router.delete('/:id', (req, res) => {
+    const note = notes.findById(req.params.id);
+    if (!note || !canDelete(req.user!, note)) {
+      throw new ApiError(404, 'note_not_found', 'Note not found');
+    }
+    notes.delete(note, expectedVersion(req));
+    res.status(204).end();
   });
 
   return router;
