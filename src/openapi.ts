@@ -78,6 +78,7 @@ export function buildOpenApiDocument(): Json {
           responses: {
             '201': response('The new account.', ref('User'), userExample),
             '400': errorRef('ValidationFailed'),
+            '413': errorRef('PayloadTooLarge'),
             '409': errorRef('EmailTaken'),
           },
         },
@@ -99,6 +100,7 @@ export function buildOpenApiDocument(): Json {
           responses: {
             '201': response('A new session.', ref('Session'), sessionExample),
             '400': errorRef('ValidationFailed'),
+            '413': errorRef('PayloadTooLarge'),
             '401': response(
               'Wrong email or password. The response is the same for both.',
               ref('Error'),
@@ -141,6 +143,7 @@ export function buildOpenApiDocument(): Json {
               displayName: 'Ada L.',
             }),
             '400': errorRef('ValidationFailed'),
+            '413': errorRef('PayloadTooLarge'),
             '401': errorRef('Unauthorized'),
             '409': errorRef('EmailTaken'),
           },
@@ -205,6 +208,11 @@ export function buildOpenApiDocument(): Json {
               details: [{ path: 'email', message: 'Invalid email address' }],
             },
           },
+        ),
+        PayloadTooLarge: response(
+          'The request body is too large.',
+          ref('Error'),
+          errorExample('payload_too_large', 'Request body is too large'),
         ),
         EmailTaken: response(
           'That email is already registered.',

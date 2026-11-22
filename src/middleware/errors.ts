@@ -14,6 +14,9 @@ export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json(body);
 };
 
+const isPayloadTooLarge = (err: unknown): boolean =>
+  typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.too.large';
+
 export function createErrorHandler(logger: Logger): ErrorRequestHandler {
   // Express identifies error handlers by their four-argument signature, so `next` must stay.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -24,6 +27,15 @@ export function createErrorHandler(logger: Logger): ErrorRequestHandler {
         error: { code: 'invalid_json', message: 'Request body is not valid JSON' },
       };
       res.status(400).json(body);
+      return;
+    }
+
+    // The JSON parser rejects oversized bodies before any route runs.
+    if (isPayloadTooLarge(err)) {
+      const body: ErrorBody = {
+        error: { code: 'payload_too_large', message: 'Request body is too large' },
+      };
+      res.status(413).json(body);
       return;
     }
 

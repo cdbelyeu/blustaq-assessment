@@ -28,6 +28,25 @@ describe('error handling', () => {
     });
   });
 
+  it('returns 413 for a request body over the size limit, without logging an error', async () => {
+    const { logger, entries } = capturingLogger();
+    const app = createApp({ db, logger });
+
+    const res = await request(app)
+      .post('/users')
+      .send({
+        email: 'a@example.com',
+        displayName: 'x'.repeat(200_000),
+        password: 'whatever long',
+      });
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({
+      error: { code: 'payload_too_large', message: 'Request body is too large' },
+    });
+    expect(entries()).toEqual([]);
+  });
+
   it('returns a generic 500 without leaking internals, and logs the cause', async () => {
     const { logger, entries } = capturingLogger();
     const app = express();

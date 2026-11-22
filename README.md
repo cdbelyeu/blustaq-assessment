@@ -116,6 +116,7 @@ Sharing gets its own endpoint rather than a field on `PATCH`, so the authorizati
 | Change password                    | As a **team member**, I want to change my password, so that a leaked password doesn't mean a lost account.               |
 | Session list and revoke            | As a **team member**, I want to see and end my other sessions, so that a lost laptop can't keep access.                  |
 | Personal access tokens             | As a **client developer**, I want named, revocable tokens, so that scripts and CI can call the API without a login.      |
+| Large notes (paged content)        | As a **team member**, I want to keep notes longer than 100 KB, so that long documents don't have to be split by hand.    |
 
 ### M3: ready for production
 
@@ -154,6 +155,7 @@ Choices made deliberately for the scope of this exercise, and what they cost.
 
 - SQLite allows one writer at a time, which is fine for small teams on a single instance. All SQL lives in the repository modules under `src/db`, so moving to Postgres changes those modules and the migration runner, not the routes.
 - Deleting a user deletes their notes, including notes they shared with a team. Teammates lose those notes.
+- A note body is capped at 100 KB (UTF-8 bytes). That bounds what one request can store and keeps reads and lists small, at the cost of very long documents. Raising it safely means serving a note's content in pages, which is listed under M2.
 - Expired sessions are ignored but never deleted, so the `sessions` table only grows. A scheduled purge is listed under technical next steps.
 
 **Authentication**
