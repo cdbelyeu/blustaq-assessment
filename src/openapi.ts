@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import {
+  createNoteBody,
   createSessionBody,
   createUserBody,
   errorResponse,
   healthResponse,
+  noteResponse,
   sessionResponse,
   updateUserBody,
   userResponse,
@@ -35,6 +37,15 @@ const userExample = {
   createdAt: '2026-11-21T22:02:27.000Z',
   updatedAt: '2026-11-21T22:02:27.000Z',
 };
+const noteExample = {
+  id: '9b1f6c2e-47d3-4e0a-8c55-1d2a7e3b6f04',
+  ownerId: userExample.id,
+  title: 'Sprint planning',
+  body: '# Sprint planning\n\n- Review the backlog\n- Agree the goal',
+  version: 1,
+  createdAt: '2026-11-21T22:05:00.000Z',
+  updatedAt: '2026-11-21T22:05:00.000Z',
+};
 const sessionExample = {
   token: 'q8Zr0h2n6mXk4V9yT1wLpB3sD7fGjC5aE-uHiOcNdMg',
   expiresAt: '2026-11-21T22:32:27.000Z',
@@ -58,6 +69,7 @@ export function buildOpenApiDocument(): Json {
     tags: [
       { name: 'Accounts', description: 'Create and manage your own account.' },
       { name: 'Sessions', description: 'Sign in to get a token, and sign out to end it.' },
+      { name: 'Notes', description: 'Your notes. Markdown is stored as sent.' },
       { name: 'Health', description: 'Is the service up, and can it reach its data?' },
     ],
     paths: {
@@ -116,6 +128,28 @@ export function buildOpenApiDocument(): Json {
           description: 'Ends the session this request is using, immediately.',
           security: signedIn,
           responses: { '204': response('Signed out.'), '401': errorRef('Unauthorized') },
+        },
+      },
+      '/notes': {
+        post: {
+          tags: ['Notes'],
+          summary: 'Create a note',
+          description:
+            'The note is private to you. The body is Markdown, at most 100 KB (UTF-8), and may be empty.',
+          security: signedIn,
+          requestBody: {
+            required: true,
+            content: json(ref('CreateNoteRequest'), {
+              title: 'Sprint planning',
+              body: '# Sprint planning\n\n- Review the backlog\n- Agree the goal',
+            }),
+          },
+          responses: {
+            '201': response('The new note.', ref('Note'), noteExample),
+            '400': errorRef('ValidationFailed'),
+            '401': errorRef('Unauthorized'),
+            '413': errorRef('PayloadTooLarge'),
+          },
         },
       },
       '/me': {
@@ -188,6 +222,8 @@ export function buildOpenApiDocument(): Json {
         CreateUserRequest: schemaOf(createUserBody, 'input'),
         UpdateUserRequest: schemaOf(updateUserBody, 'input'),
         CreateSessionRequest: schemaOf(createSessionBody, 'input'),
+        CreateNoteRequest: schemaOf(createNoteBody, 'input'),
+        Note: schemaOf(noteResponse, 'output'),
         Session: schemaOf(sessionResponse, 'output'),
         Error: schemaOf(errorResponse, 'output'),
         Health: schemaOf(healthResponse, 'output'),

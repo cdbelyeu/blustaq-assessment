@@ -5,6 +5,7 @@ import { buildOpenApiDocument } from '../src/openapi';
 import {
   errorResponse,
   healthResponse,
+  noteResponse,
   sessionResponse,
   userResponse,
 } from '../src/routes/schemas';
@@ -65,6 +66,7 @@ describe('API documentation', () => {
       Error: errorResponse,
       Health: healthResponse,
       Session: sessionResponse,
+      Note: noteResponse,
     };
     const doc = buildOpenApiDocument() as {
       paths: Record<string, Record<string, { responses: Record<string, Response> }>>;
@@ -119,6 +121,17 @@ describe('API documentation', () => {
       for (const res of [invalid, duplicate, badLogin, anonymous]) {
         expect(errorResponse.safeParse(res.body).success).toBe(true);
       }
+    });
+
+    it('for a created note', async () => {
+      const { token } = await t.signUp();
+
+      const res = await request(t.app)
+        .post('/notes')
+        .set(...bearer(token))
+        .send({ title: 'Plan', body: '# Plan' });
+
+      expect(noteResponse.safeParse(res.body).success).toBe(true);
     });
 
     it('for health checks', async () => {

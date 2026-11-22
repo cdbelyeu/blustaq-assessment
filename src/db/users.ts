@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { systemClock, type Clock } from '../clock';
 import { ApiError } from '../errors';
 import type { Db } from './database';
 
@@ -90,7 +91,7 @@ const DELETE_USER = `
   WHERE id = ?
 `;
 
-export function createUserRepository(db: Db): UserRepository {
+export function createUserRepository(db: Db, clock: Clock = systemClock): UserRepository {
   const insert = db.prepare(INSERT_USER);
   const selectById = db.prepare<[string], UserRow>(SELECT_USER_BY_ID);
   const selectByEmail = db.prepare<[string], UserRow>(SELECT_USER_BY_EMAIL);
@@ -99,7 +100,7 @@ export function createUserRepository(db: Db): UserRepository {
 
   return {
     create({ email, displayName, passwordHash }) {
-      const now = new Date().toISOString();
+      const now = clock().toISOString();
       const user: User = { id: randomUUID(), email, displayName, createdAt: now, updatedAt: now };
       try {
         insert.run(user.id, email, displayName, passwordHash, now, now);
@@ -124,7 +125,7 @@ export function createUserRepository(db: Db): UserRepository {
         ...user,
         email: patch.email ?? user.email,
         displayName: patch.displayName ?? user.displayName,
-        updatedAt: new Date().toISOString(),
+        updatedAt: clock().toISOString(),
       };
       try {
         updateById.run(updated.email, updated.displayName, updated.updatedAt, user.id);

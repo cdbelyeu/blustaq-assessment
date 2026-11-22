@@ -95,12 +95,12 @@ Each step is delivered and committed on its own, with tests.
 | 3   | `POST /sessions`, `DELETE /sessions/current` | Passwords (scrypt), 30-minute sessions, bearer-token auth; replaces the temporary stub | MVP-5        |
 | 4   | `POST /notes`                                | Notes table, create a private note                                                     | MVP-1        |
 | 5   | `GET /notes/:id`                             | Read a note                                                                            | MVP-1        |
-| 6   | `GET /notes`                                 | List my notes                                                                          | MVP-6        |
+| 6   | `GET /notes`                                 | List my notes, cursor-paginated                                                        | MVP-6        |
 | 7   | `PATCH /notes/:id`                           | Update title and body                                                                  | MVP-1        |
 | 8   | `DELETE /notes/:id`                          | Owner deletes a note                                                                   | MVP-1, MVP-4 |
 | 9   | `GET /teams`, `GET /teams/:id/members`       | Teams and memberships, seeded                                                          | MVP-2        |
 | 10  | `PUT /notes/:id/sharing`                     | Owner shares or unshares; team members can read and edit                               | MVP-3, MVP-4 |
-| 11  | `GET /notes?scope=mine\|team&cursor=`        | Scope filter and cursor pagination                                                     | MVP-6        |
+| 11  | `GET /notes?scope=mine\|team`                | Scope filter: my notes, or notes shared with my teams                                  | MVP-6        |
 | 12  | `If-Match` on `PATCH /notes/:id`             | Optimistic concurrency, `412` on conflict                                              | MVP-7        |
 
 Sharing gets its own endpoint rather than a field on `PATCH`, so the authorization rules map one-to-one to endpoints: team members edit content, and only the owner decides who can see it.

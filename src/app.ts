@@ -2,14 +2,17 @@ import express from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { createPasswordHasher, type PasswordHasher } from './auth/passwords';
 import type { Db } from './db/database';
+import { createNoteRepository } from './db/notes';
 import { createSessionRepository } from './db/sessions';
 import { createUserRepository } from './db/users';
 import type { Logger } from './logger';
-import { createAuth, type Clock } from './middleware/auth';
+import { systemClock, type Clock } from './clock';
+import { createAuth } from './middleware/auth';
 import { createErrorHandler, notFoundHandler } from './middleware/errors';
 import { buildOpenApiDocument } from './openapi';
 import { createHealthRouter } from './routes/health';
 import { createMeRouter } from './routes/me';
+import { createNotesRouter } from './routes/notes';
 import { createSessionsRouter } from './routes/sessions';
 import { createUsersRouter } from './routes/users';
 
@@ -25,17 +28,19 @@ export interface AppDependencies {
 export function createApp({
   db,
   logger,
-  clock = () => new Date(),
+  clock = systemClock,
   passwordHasher = createPasswordHasher(),
   sessionTtlMinutes = 30,
 }: AppDependencies): express.Express {
-  const users = createUserRepository(db);
+  const users = createUserRepository(db, clock);
   const sessions = createSessionRepository(db);
+  const notes = createNoteRepository(db, clock);
   const requireAuth = createAuth(sessions, clock);
 
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json());
+  // Above the 100 KB note cap, so the field rules decide what is too big; beyond this is a 413.
+  app.use(express.json({ limit: '256kb' }));
 
   const openApiDocument = buildOpenApiDocument();
   app.get('/openapi.json', (_req, res) => {
@@ -61,6 +66,7 @@ export function createApp({
     }),
   );
   app.use('/me', requireAuth, createMeRouter(users));
+  app.use('/notes', requireAuth, createNotesRouter(notes));
 
   app.use(notFoundHandler);
   app.use(createErrorHandler(logger));

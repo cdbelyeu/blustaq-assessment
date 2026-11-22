@@ -5,7 +5,7 @@ import { generateToken, hashToken } from '../auth/tokens';
 import type { SessionRepository } from '../db/sessions';
 import type { UserRepository } from '../db/users';
 import { ApiError } from '../errors';
-import type { Clock } from '../middleware/auth';
+import type { Clock } from '../clock';
 import { createSessionBody } from './schemas';
 
 interface Options {

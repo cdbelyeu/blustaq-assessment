@@ -34,6 +34,7 @@ describe('openDatabase', () => {
       { name: '001_health_check.sql' },
       { name: '002_users.sql' },
       { name: '003_auth.sql' },
+      { name: '004_notes.sql' },
     ]);
     reopened.close();
     fs.rmSync(dir, { recursive: true });

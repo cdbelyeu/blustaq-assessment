@@ -36,7 +36,7 @@ describe('error handling', () => {
       .post('/users')
       .send({
         email: 'a@example.com',
-        displayName: 'x'.repeat(200_000),
+        displayName: 'x'.repeat(300_000),
         password: 'whatever long',
       });
 

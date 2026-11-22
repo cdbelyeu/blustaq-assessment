@@ -27,6 +27,8 @@ The decisions and standards for this project, kept in one place. Change this fil
 - Timestamps are ISO 8601 text in UTC.
 - A note's body is a `TEXT` column placed last in the table. List endpoints never return it.
 - Deleting a user deletes their notes (`ON DELETE CASCADE` on the note owner). This includes notes they shared with a team.
+- Index every foreign key column; SQLite does not do it for you. The list query's index order (`owner_id, updated_at DESC, id DESC`) matches its sort, and a test checks the query plan.
+- `notes.owner_id` is nullable, reserved for team ownership. Nothing creates an ownerless note and no one can read one, because access is "the owner".
 - SQL statements are `UPPER_SNAKE` template-literal constants at the top of the file that uses them, never inline strings. Put each clause (`SELECT`, `FROM`, `WHERE`, `SET`) on its own line.
 - The schema grows one migration at a time as features need it. No tables ahead of their feature.
 
@@ -47,7 +49,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 - Integration tests (`tests/`) run in-process with a real in-memory SQLite database. Mock only at external boundaries, never our own modules.
 - Unit specs sit next to the file they test (`src/db/database.spec.ts`). Specs that drive the whole app through supertest live in `tests/`. Spec files are excluded from coverage and from the production build.
 - Test files are named `<subject>.spec.ts`. Write every test with `it()`, never `test()`, and word its name to read as a sentence after "it" (`it('returns a JSON 404 for unknown routes')`). Playwright only exports `test`, so import it as `it`: `import { test as it, expect } from '@playwright/test'`.
-- Time and password cost are injected into `createApp` (`clock`, `passwordHasher`). Tests move the clock instead of sleeping and use a near-free hash.
+- Time and password cost are injected into `createApp` (`clock`, `passwordHasher`), and the clock reaches every repository. Tests move the clock instead of sleeping and use a near-free hash.
 - Acceptance tests (`acceptance/`) may only reach the service over HTTP. A lint rule blocks imports from `src/`. Test names carry the user story ID (for example `MVP-9`).
 - Every endpoint is added to `src/openapi.ts` in the step that creates it. Tests check that the document is valid, that each documented operation is routed, and that real responses match the documented shapes. They do not detect an endpoint that is routed but missing from the docs, so review for that.
 - Comments explain why, not what, and never reference tickets or process.

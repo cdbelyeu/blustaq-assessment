@@ -1,9 +1,8 @@
 import type { RequestHandler } from 'express';
 import { hashToken } from '../auth/tokens';
 import type { SessionRepository } from '../db/sessions';
+import type { Clock } from '../clock';
 import { ApiError } from '../errors';
-
-export type Clock = () => Date;
 
 const BEARER = /^Bearer (\S+)$/;
 
