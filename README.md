@@ -202,3 +202,27 @@ Choices made deliberately for the scope of this exercise, and what they cost.
 - The project compiles to CommonJS and tests transform TypeScript with `@swc/jest`, which does not type-check; `yarn typecheck` does. TypeScript is pinned to 6.0 because typescript-eslint does not support 7.0 yet.
 - The OpenAPI document is checked for validity, for documented operations being routed, and for examples matching real responses. A route that exists but is missing from the docs is not detected and has to be caught in review.
 - The black-box acceptance suite cannot control the server's clock, so session expiry is tested in the integration suite with an injected clock, not end to end.
+
+## Commit history
+
+Each delivery step is its own commit, oldest first. Messages start with `New:` for features and `Chore:` for tooling, structure and docs. The full history is on the repository's commits page; this is a snapshot.
+
+- `1f8e497` New: initial project setup with healthcheck endpoint
+- `48bd609` New: added database stub with health check
+- `cd126fc` Chore: added constitution file to track constitutional things
+- `eba7596` Chore: some test structure changes
+- `3e02001` New: centralized logging into a pino-based logger
+- `1fbd170` Chore: updated docs
+- `6159d51` New: initial implementation of user endpoints - no auth yet
+- `8ea4283` Chore: added a note
+- `c634be8` Chore: added swagger docs to facilitate testing
+- `d52292c` New: implemented user session management
+- `c1020f5` Chore: updated docs
+- `673d678` New: refactored sql statements for better readabilityh
+- `e1c20fc` Chore: docs and planning around handling large notes
+- `edfbfd9` Chore: docs for note deletion future steps
+- `791193f` New: initial note creation implementation
+- `2424f2e` New: note get endpoints
+- `282de96` New: note update endpoints
+- `9b79f30` New: note deletion
+- `4f674ee` Chore: updated readme with design discussion
