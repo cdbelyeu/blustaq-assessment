@@ -156,6 +156,7 @@ Choices made deliberately for the scope of this exercise, and what they cost.
 - SQLite allows one writer at a time, which is fine for small teams on a single instance. All SQL lives in the repository modules under `src/db`, so moving to Postgres changes those modules and the migration runner, not the routes.
 - Deleting a user deletes their notes, including notes they shared with a team. Teammates lose those notes.
 - A note body is capped at 100 KB (UTF-8 bytes). That bounds what one request can store and keeps reads and lists small, at the cost of very long documents. Raising it safely means serving a note's content in pages, which is listed under M2.
+- Lists are ordered by last edit, newest first, and paged with a cursor on `(updated_at, id)`. A note edited while someone is paging moves to the top and can be missed in that pass, in exchange for a cheap query that never skips or repeats notes that did not change.
 - Deleting a note is permanent. Recovery depends on soft delete with trash and restore, listed under M2.
 - Expired sessions are ignored but never deleted, so the `sessions` table only grows. A scheduled purge is listed under technical next steps.
 

@@ -5,6 +5,7 @@ import { buildOpenApiDocument } from '../src/openapi';
 import {
   errorResponse,
   healthResponse,
+  noteListResponse,
   noteResponse,
   sessionResponse,
   userResponse,
@@ -67,6 +68,7 @@ describe('API documentation', () => {
       Health: healthResponse,
       Session: sessionResponse,
       Note: noteResponse,
+      NoteList: noteListResponse,
     };
     const doc = buildOpenApiDocument() as {
       paths: Record<string, Record<string, { responses: Record<string, Response> }>>;

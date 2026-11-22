@@ -27,6 +27,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 - Timestamps are ISO 8601 text in UTC.
 - A note's body is a `TEXT` column placed last in the table. List endpoints never return it.
 - Deleting a user deletes their notes (`ON DELETE CASCADE` on the note owner). This includes notes they shared with a team.
+- Lists are cursor-paginated with a keyset on `(updated_at, id)`: fetch one extra row to know whether a next page exists, return an opaque cursor, and never include the note body. A bad cursor or limit is a `400`.
 - Index every foreign key column; SQLite does not do it for you. The list query's index order (`owner_id, updated_at DESC, id DESC`) matches its sort, and a test checks the query plan.
 - `notes.owner_id` is nullable, reserved for team ownership. Nothing creates an ownerless note and no one can read one, because access is "the owner".
 - SQL statements are `UPPER_SNAKE` template-literal constants at the top of the file that uses them, never inline strings. Put each clause (`SELECT`, `FROM`, `WHERE`, `SET`) on its own line.
@@ -58,6 +59,7 @@ The decisions and standards for this project, kept in one place. Change this fil
 ## Authorization rules
 
 - Someone outside a note's team gets `404`, not `403`, so a note's existence is not revealed.
+- Access rules live in `src/policies`. Routes call them and answer any denial with `404 note_not_found`, so a missing note and someone else's note look identical.
 - Team members can read and edit a shared note. Only the owner can delete it or change who it is shared with.
 
 ## Working agreement

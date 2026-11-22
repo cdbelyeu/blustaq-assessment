@@ -24,6 +24,11 @@ const noteBody = z
 
 export const createNoteBody = z.strictObject({ title: noteTitle, body: noteBody });
 
+export const listNotesQuery = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().min(1).optional(),
+});
+
 export const createSessionBody = z.strictObject({
   email,
   password: z.string().min(1).max(128).meta({ format: 'password' }),
@@ -50,6 +55,13 @@ export const noteResponse = z.object({
   version: z.number().int().min(1),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+});
+
+export const noteSummaryResponse = noteResponse.omit({ body: true });
+
+export const noteListResponse = z.object({
+  items: z.array(noteSummaryResponse),
+  nextCursor: z.string().nullable(),
 });
 
 export const sessionResponse = z.object({ token: z.string(), expiresAt: z.iso.datetime() });

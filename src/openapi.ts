@@ -5,7 +5,9 @@ import {
   createUserBody,
   errorResponse,
   healthResponse,
+  noteListResponse,
   noteResponse,
+  noteSummaryResponse,
   sessionResponse,
   updateUserBody,
   userResponse,
@@ -45,6 +47,21 @@ const noteExample = {
   version: 1,
   createdAt: '2026-11-21T22:05:00.000Z',
   updatedAt: '2026-11-21T22:05:00.000Z',
+};
+const noteSummaryExample = {
+  id: noteExample.id,
+  ownerId: noteExample.ownerId,
+  title: noteExample.title,
+  version: noteExample.version,
+  createdAt: noteExample.createdAt,
+  updatedAt: noteExample.updatedAt,
+};
+const noteListExample = {
+  items: [
+    { ...noteSummaryExample, id: 'c4a8d1f0-2b6e-4f37-9a10-5e8b3c7d2a91', title: 'Retro notes' },
+    noteSummaryExample,
+  ],
+  nextCursor: 'MjAyNi0xMS0yMVQyMjowNTowMC4wMDBafDliMWY2YzJlLTQ3ZDMtNGUwYS04YzU1LTFkMmE3ZTNiNmYwNA',
 };
 const sessionExample = {
   token: 'q8Zr0h2n6mXk4V9yT1wLpB3sD7fGjC5aE-uHiOcNdMg',
@@ -131,6 +148,33 @@ export function buildOpenApiDocument(): Json {
         },
       },
       '/notes': {
+        get: {
+          tags: ['Notes'],
+          summary: 'List your notes',
+          description:
+            'Newest edit first. Bodies are left out; fetch a note to read it. Pass `nextCursor` ' +
+            'back as `cursor` to get the following page; it is `null` on the last page.',
+          security: signedIn,
+          parameters: [
+            {
+              name: 'limit',
+              in: 'query',
+              description: 'Notes per page.',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            {
+              name: 'cursor',
+              in: 'query',
+              description: 'The `nextCursor` from the previous page.',
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': response('One page of your notes.', ref('NoteList'), noteListExample),
+            '400': errorRef('ValidationFailed'),
+            '401': errorRef('Unauthorized'),
+          },
+        },
         post: {
           tags: ['Notes'],
           summary: 'Create a note',
@@ -145,10 +189,34 @@ export function buildOpenApiDocument(): Json {
             }),
           },
           responses: {
-            '201': response('The new note.', ref('Note'), noteExample),
+            '201': {
+              ...response('The new note.', ref('Note'), noteExample),
+              headers: {
+                Location: {
+                  description: 'Where to read the note.',
+                  schema: { type: 'string', example: `/notes/${noteExample.id}` },
+                },
+              },
+            },
             '400': errorRef('ValidationFailed'),
             '401': errorRef('Unauthorized'),
             '413': errorRef('PayloadTooLarge'),
+          },
+        },
+      },
+      '/notes/{id}': {
+        get: {
+          tags: ['Notes'],
+          summary: 'Get a note',
+          description:
+            'Returns the whole note, including its body. A note that is not yours is reported as ' +
+            'not found, the same as one that does not exist.',
+          security: signedIn,
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': response('The note.', ref('Note'), noteExample),
+            '401': errorRef('Unauthorized'),
+            '404': errorRef('NoteNotFound'),
           },
         },
       },
@@ -224,6 +292,8 @@ export function buildOpenApiDocument(): Json {
         CreateSessionRequest: schemaOf(createSessionBody, 'input'),
         CreateNoteRequest: schemaOf(createNoteBody, 'input'),
         Note: schemaOf(noteResponse, 'output'),
+        NoteSummary: schemaOf(noteSummaryResponse, 'output'),
+        NoteList: schemaOf(noteListResponse, 'output'),
         Session: schemaOf(sessionResponse, 'output'),
         Error: schemaOf(errorResponse, 'output'),
         Health: schemaOf(healthResponse, 'output'),
@@ -244,6 +314,11 @@ export function buildOpenApiDocument(): Json {
               details: [{ path: 'email', message: 'Invalid email address' }],
             },
           },
+        ),
+        NoteNotFound: response(
+          'No such note, or it is not yours.',
+          ref('Error'),
+          errorExample('note_not_found', 'Note not found'),
         ),
         PayloadTooLarge: response(
           'The request body is too large.',

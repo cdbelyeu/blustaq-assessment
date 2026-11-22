@@ -13,6 +13,8 @@ it.describe('MVP-11: a client developer can explore the API interactively', () =
         '/sessions',
         '/sessions/current',
         '/me',
+        '/notes',
+        '/notes/{id}',
         '/health',
         '/health/db',
       ]),
