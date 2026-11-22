@@ -161,6 +161,18 @@ The cost is a single writer at a time, which is fine for small teams on one inst
 
 If note bodies grow large or heavily read, the next step is to split them out of `notes` into their own table keyed by note ID, or into a document store. Lists, sharing checks and joins would then run over small rows only. The body is already the last column and is never returned by list endpoints, so the code is shaped for that split. Sharding is out of scope; a single database is the right size for this problem.
 
+### Validation: Zod as the single source of truth
+
+Request bodies and query strings arrive as `unknown`, and TypeScript types disappear at runtime. Hand-written checks, hand-written types and hand-written API docs would be three copies of every rule, and they would drift apart. Instead each rule is written once, as a Zod schema in `src/routes/schemas.ts`:
+
+- The schema validates the request at runtime and rejects unknown fields (`strictObject`), so a client can't smuggle in `ownerId` or `version`.
+- The TypeScript type of the parsed value is inferred from the same schema, so handlers receive trusted, typed input.
+- The OpenAPI request bodies in `/docs` are generated from the same schemas.
+- Normalization (lowercased emails, trimmed titles, `limit` coerced to a number with a default) lives in the schema, so no route can forget it.
+- Every failure becomes the same `{ error: { code, message, details } }` response.
+
+The cost is that validation runs at runtime only, and refinements such as the 100 KB byte cap don't appear in the generated OpenAPI beyond their description.
+
 ## Tradeoffs and known limitations
 
 Choices made deliberately for the scope of this exercise, and what they cost.
