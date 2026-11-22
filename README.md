@@ -203,6 +203,26 @@ Choices made deliberately for the scope of this exercise, and what they cost.
 - The OpenAPI document is checked for validity, for documented operations being routed, and for examples matching real responses. A route that exists but is missing from the docs is not detected and has to be caught in review.
 - The black-box acceptance suite cannot control the server's clock, so session expiry is tested in the integration suite with an injected clock, not end to end.
 
+## With more time
+
+**Add**
+
+- **Teams, sharing and the team scope** (delivery steps 9–11). This is the part of the MVP not yet built, and it is next because it is what makes the service shared. Until it lands, a note is visible only to its owner.
+- **CI, a Dockerfile and a deployment environment**, so `yarn verify` runs on every push. See [Technical next steps](#technical-next-steps).
+- **Login throttling and rate limiting**, before the service faces the internet. Passwords can currently be guessed at the speed of the server.
+- **Expired session cleanup**, and then the M2 features that matter most day to day: search, tags and soft delete with restore.
+
+**Change**
+
+- **Move to Postgres** once there is more than one instance or heavy concurrent writing, as described under [Database](#database-sqlite-now-postgres-later).
+- **Stricter error boundary.** `EmailTakenError` extends `ApiError`, so the repository carries an HTTP status. A plain domain error mapped in the error handler would keep the layers separate.
+- **Catch routes missing from the OpenAPI document.** Tests check that documented operations are routed, but not the reverse, so that currently relies on review.
+
+**Stop doing**
+
+- **Keeping the roadmap in the README.** It stands in for a tracker here, and it drifts from the code as steps land. On a real project it belongs in a ticketing tool.
+- **Leaving CI until the end.** The quality gates exist locally, but a pipeline should be the first commit so that they block changes from the start.
+
 ## Commit history
 
 Each delivery step is its own commit, oldest first. Messages start with `New:` for features and `Chore:` for tooling, structure and docs. The full history is on the repository's commits page; this is a snapshot.
