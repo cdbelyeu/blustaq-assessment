@@ -145,3 +145,29 @@ Sharing gets its own endpoint rather than a field on `PATCH`, so the authorizati
 - **File attachments:** needs object storage and upload handling that don't exercise the core sharing problem.
 - **Notifications:** depends on delivery channels the service doesn't own.
 - **Any frontend:** the deliverable is the API.
+
+## Tradeoffs and known limitations
+
+Choices made deliberately for the scope of this exercise, and what they cost.
+
+**Storage**
+
+- SQLite allows one writer at a time, which is fine for small teams on a single instance. All SQL lives in the repository modules under `src/db`, so moving to Postgres changes those modules and the migration runner, not the routes.
+- Deleting a user deletes their notes, including notes they shared with a team. Teammates lose those notes.
+- Expired sessions are ignored but never deleted, so the `sessions` table only grows. A scheduled purge is listed under technical next steps.
+
+**Authentication**
+
+- Passwords are hashed with scrypt at OWASP's recommended cost. Session tokens are 256 random bits stored as a SHA-256 hash; a fast hash is safe there because there is nothing to guess. A keyed hash (HMAC) would be a possible hardening step.
+- Sessions last a fixed 30 minutes and are never extended, so clients sign in again with the password. A sliding idle timeout would be friendlier but turns every authenticated read into a write, which matters with SQLite's single writer.
+- There is no password reset, no password change and no check against breached-password lists. A forgotten password means a lost account until email delivery and SSO exist.
+- There is no login throttling, so passwords can be guessed at the speed of the server. Rate limiting is an M3 item.
+- Sign-in answers an unknown email and a wrong password identically, in status, body and timing. Registration still returns `409` for a taken email, which reveals that the address is registered.
+- The service speaks plain HTTP and must run behind TLS, or tokens can be read off the network. If request logging is added, the `Authorization` header must be redacted.
+
+**Code and tooling**
+
+- `EmailTakenError` extends `ApiError`, so the repository carries an HTTP status. It is a pragmatic shortcut; a stricter boundary would throw a plain domain error and map it in the error handler.
+- The project compiles to CommonJS and tests transform TypeScript with `@swc/jest`, which does not type-check; `yarn typecheck` does. TypeScript is pinned to 6.0 because typescript-eslint does not support 7.0 yet.
+- The OpenAPI document is checked for validity, for documented operations being routed, and for examples matching real responses. A route that exists but is missing from the docs is not detected and has to be caught in review.
+- The black-box acceptance suite cannot control the server's clock, so session expiry is tested in the integration suite with an injected clock, not end to end.
