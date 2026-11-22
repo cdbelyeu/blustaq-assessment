@@ -53,16 +53,49 @@ const isUniqueViolation = (err: unknown): boolean =>
   'code' in err &&
   err.code === 'SQLITE_CONSTRAINT_UNIQUE';
 
+const INSERT_USER = `
+  INSERT INTO users (
+    id,
+    email,
+    display_name,
+    password_hash,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?)
+`;
+
+const SELECT_USER_BY_ID = `
+  SELECT *
+  FROM users
+  WHERE id = ?
+`;
+
+const SELECT_USER_BY_EMAIL = `
+  SELECT *
+  FROM users
+  WHERE email = ?
+`;
+
+const UPDATE_USER = `
+  UPDATE users
+  SET email = ?,
+      display_name = ?,
+      updated_at = ?
+  WHERE id = ?
+`;
+
+const DELETE_USER = `
+  DELETE FROM users
+  WHERE id = ?
+`;
+
 export function createUserRepository(db: Db): UserRepository {
-  const insert = db.prepare(
-    'INSERT INTO users (id, email, display_name, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-  );
-  const selectById = db.prepare<[string], UserRow>('SELECT * FROM users WHERE id = ?');
-  const selectByEmail = db.prepare<[string], UserRow>('SELECT * FROM users WHERE email = ?');
-  const updateById = db.prepare(
-    'UPDATE users SET email = ?, display_name = ?, updated_at = ? WHERE id = ?',
-  );
-  const deleteById = db.prepare('DELETE FROM users WHERE id = ?');
+  const insert = db.prepare(INSERT_USER);
+  const selectById = db.prepare<[string], UserRow>(SELECT_USER_BY_ID);
+  const selectByEmail = db.prepare<[string], UserRow>(SELECT_USER_BY_EMAIL);
+  const updateById = db.prepare(UPDATE_USER);
+  const deleteById = db.prepare(DELETE_USER);
 
   return {
     create({ email, displayName, passwordHash }) {

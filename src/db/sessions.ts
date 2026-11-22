@@ -16,17 +16,38 @@ interface UserRow {
   updated_at: string;
 }
 
+const INSERT_SESSION = `
+  INSERT INTO sessions (
+    token_hash,
+    user_id,
+    created_at,
+    expires_at
+  )
+  VALUES (?, ?, ?, ?)
+`;
+
+// Expired sessions match nothing. ISO 8601 UTC strings sort the same way as the times they describe.
+const SELECT_USER_BY_LIVE_SESSION = `
+  SELECT u.id,
+         u.email,
+         u.display_name,
+         u.created_at,
+         u.updated_at
+  FROM sessions s
+  JOIN users u ON u.id = s.user_id
+  WHERE s.token_hash = ?
+    AND s.expires_at > ?
+`;
+
+const DELETE_SESSION = `
+  DELETE FROM sessions
+  WHERE token_hash = ?
+`;
+
 export function createSessionRepository(db: Db): SessionRepository {
-  const insert = db.prepare(
-    'INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
-  );
-  // ISO 8601 UTC strings sort the same way as the times they describe.
-  const selectUser = db.prepare<[string, string], UserRow>(
-    `SELECT u.id, u.email, u.display_name, u.created_at, u.updated_at
-       FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.expires_at > ?`,
-  );
-  const remove = db.prepare('DELETE FROM sessions WHERE token_hash = ?');
+  const insert = db.prepare(INSERT_SESSION);
+  const selectUser = db.prepare<[string, string], UserRow>(SELECT_USER_BY_LIVE_SESSION);
+  const remove = db.prepare(DELETE_SESSION);
 
   return {
     create({ tokenHash, userId, createdAt, expiresAt }) {
