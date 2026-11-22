@@ -24,6 +24,12 @@ const noteBody = z
 
 export const createNoteBody = z.strictObject({ title: noteTitle, body: noteBody });
 
+export const updateNoteBody = z
+  .strictObject({ title: noteTitle.optional(), body: noteBody.optional() })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Provide at least one of: title, body',
+  });
+
 export const listNotesQuery = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().min(1).optional(),
@@ -36,7 +42,9 @@ export const createSessionBody = z.strictObject({
 
 export const updateUserBody = z
   .strictObject({ email: email.optional(), displayName: displayName.optional() })
-  .refine((body) => Object.keys(body).length > 0, { message: 'Provide at least one field' });
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'Provide at least one of: email, displayName',
+  });
 
 // Response shapes. They exist for the API docs and for tests that check real responses match.
 export const userResponse = z.object({

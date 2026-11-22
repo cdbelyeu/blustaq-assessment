@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { systemClock, type Clock } from '../clock';
+import { ApiError } from '../errors';
 import type { Db } from './database';
 
 export interface Note {
@@ -25,9 +26,24 @@ export interface NotePage {
   next: PageCursor | undefined;
 }
 
+export interface NotePatch {
+  title?: string;
+  body?: string;
+}
+
+export class VersionConflictError extends ApiError {
+  constructor() {
+    super(412, 'version_conflict', 'The note has changed since you loaded it. Fetch it again.');
+  }
+}
+
 export interface NoteRepository {
   create(input: { ownerId: string; title: string; body: string }): Note;
   findById(id: string): Note | undefined;
+  // Changes only the fields given, and only if the note is still at `expectedVersion`; otherwise
+  // throws VersionConflictError. If nothing differs, the note is returned untouched: no new
+  // version and no new edit time.
+  update(note: Note, patch: NotePatch, expectedVersion: number): Note;
   // Newest edit first, then by id, so the order is total even when timestamps tie.
   listByOwner(ownerId: string, limit: number, after?: PageCursor): NotePage;
 }
@@ -70,6 +86,24 @@ const SELECT_NOTE_BY_ID = `
   WHERE id = ?
 `;
 
+// The version check and the change are one statement, so nothing can slip in between them.
+const UPDATE_NOTE = `
+  UPDATE notes
+  SET title = ?,
+      body = ?,
+      version = version + 1,
+      updated_at = ?
+  WHERE id = ?
+    AND version = ?
+  RETURNING id,
+            owner_id,
+            title,
+            version,
+            created_at,
+            updated_at,
+            body
+`;
+
 // The list queries leave out body, so a page never reads the large column.
 // Exported so a test can check their query plans against the real statements.
 export const LIST_NOTES_FIRST_PAGE = `
@@ -108,9 +142,12 @@ const toSummary = (row: SummaryRow): NoteSummary => ({
   updatedAt: row.updated_at,
 });
 
+const toNote = (row: NoteRow): Note => ({ ...toSummary(row), body: row.body });
+
 export function createNoteRepository(db: Db, clock: Clock = systemClock): NoteRepository {
   const insert = db.prepare(INSERT_NOTE);
   const selectById = db.prepare<[string], NoteRow>(SELECT_NOTE_BY_ID);
+  const updateById = db.prepare<[string, string, string, string, number], NoteRow>(UPDATE_NOTE);
   const listFirstPage = db.prepare<[string, number], SummaryRow>(LIST_NOTES_FIRST_PAGE);
   const listAfter = db.prepare<[string, string, string, number], SummaryRow>(LIST_NOTES_AFTER);
 
@@ -132,7 +169,20 @@ export function createNoteRepository(db: Db, clock: Clock = systemClock): NoteRe
 
     findById(id) {
       const row = selectById.get(id);
-      return row && { ...toSummary(row), body: row.body };
+      return row && toNote(row);
+    },
+
+    update(note, patch, expectedVersion) {
+      if (note.version !== expectedVersion) throw new VersionConflictError();
+
+      const title = patch.title ?? note.title;
+      const body = patch.body ?? note.body;
+      if (title === note.title && body === note.body) return note;
+
+      const row = updateById.get(title, body, clock().toISOString(), note.id, expectedVersion);
+      // No row means the stored version is no longer the one expected.
+      if (!row) throw new VersionConflictError();
+      return toNote(row);
     },
 
     listByOwner(ownerId, limit, after) {

@@ -174,3 +174,179 @@ it.describe('MVP-1: a team member can find and read their notes', () => {
     expect((await request.get('/notes/00000000-0000-4000-8000-000000000000')).status()).toBe(401);
   });
 });
+
+type Api = Parameters<Parameters<typeof it>[2]>[0]['request'];
+type Note = { id: string; title: string; body: string; version: number; updatedAt: string };
+type Headers = Record<string, string>;
+
+const createNote = async (
+  request: Api,
+  headers: Headers,
+  data = { title: 'Plan', body: '# Plan' },
+) => (await (await request.post('/notes', { headers, data })).json()) as Note;
+
+// Edits like a well-behaved client: sends the ETag it last read in If-Match.
+const edit = async (request: Api, headers: Headers, id: string, data: object, ifMatch?: string) => {
+  const etag = ifMatch ?? (await request.get(`/notes/${id}`, { headers })).headers()['etag'];
+  return request.patch(`/notes/${id}`, {
+    headers: { ...headers, 'If-Match': etag ?? '"1"' },
+    data,
+  });
+};
+
+it.describe('MVP-1: a team member can edit their notes', () => {
+  it('changes a note, and reading it back shows the change', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await edit(request, headers, note.id, { title: 'Plan v2', body: '# Plan v2' });
+
+    expect(res.status()).toBe(200);
+    const updated = (await res.json()) as Note;
+    expect(updated).toMatchObject({ title: 'Plan v2', body: '# Plan v2', version: 2 });
+    const reread = await request.get(`/notes/${note.id}`, { headers });
+    expect(await reread.json()).toEqual(updated);
+  });
+
+  it('only changes the fields that were sent', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers, { title: 'Keep me', body: 'old' });
+
+    const res = await edit(request, headers, note.id, { body: 'new' });
+
+    expect(await res.json()).toMatchObject({ title: 'Keep me', body: 'new' });
+  });
+
+  it('does not raise the version when nothing changed', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await edit(request, headers, note.id, { title: 'Plan' });
+
+    expect(res.status()).toBe(200);
+    expect(await res.json()).toEqual(note);
+  });
+
+  it('raises the version by one for each change', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const first = await edit(request, headers, note.id, { title: 'B' });
+    const second = await edit(request, headers, note.id, { title: 'C' });
+
+    expect(((await first.json()) as Note).version).toBe(2);
+    expect(((await second.json()) as Note).version).toBe(3);
+  });
+
+  it("will not edit someone else's note, and leaves it untouched", async ({ request }) => {
+    const owner = await signedInUser(request);
+    const other = await signedInUser(request);
+    const note = await createNote(request, owner.headers, { title: 'Private', body: 'mine' });
+
+    const attempt = await edit(request, other.headers, note.id, { title: 'Hijacked' }, '"1"');
+    const missing = await edit(
+      request,
+      other.headers,
+      '00000000-0000-4000-8000-000000000000',
+      { title: 'Hijacked' },
+      '"1"',
+    );
+
+    expect(attempt.status()).toBe(404);
+    expect(await attempt.json()).toEqual(await missing.json());
+    const reread = await request.get(`/notes/${note.id}`, { headers: owner.headers });
+    expect(await reread.json()).toEqual(note);
+  });
+
+  it('explains what is wrong with an invalid edit', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const empty = await edit(request, headers, note.id, {});
+    const bad = await edit(request, headers, note.id, { title: ' ', ownerId: 'x' });
+
+    expect(empty.status()).toBe(400);
+    expect(bad.status()).toBe(400);
+    const body = (await bad.json()) as { error: { details: { path: string }[] } };
+    expect(body.error.details.map((d) => d.path)).toEqual(expect.arrayContaining(['', 'title']));
+  });
+
+  it('requires a signed-in user', async ({ request }) => {
+    const res = await request.patch('/notes/00000000-0000-4000-8000-000000000000', {
+      data: { title: 'x' },
+    });
+
+    expect(res.status()).toBe(401);
+  });
+});
+
+it.describe('MVP-7: an edit from an out-of-date copy cannot overwrite newer work', () => {
+  it('hands out an ETag on every note response', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+
+    const created = await request.post('/notes', { headers, data: { title: 'Plan', body: '' } });
+    const note = (await created.json()) as Note;
+    const read = await request.get(`/notes/${note.id}`, { headers });
+
+    expect(created.headers()['etag']).toBe('"1"');
+    expect(read.headers()['etag']).toBe('"1"');
+  });
+
+  it('refuses the second of two edits made from the same version', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers, { title: 'Plan', body: 'original' });
+
+    const first = await edit(request, headers, note.id, { body: "first writer's text" }, '"1"');
+    const second = await edit(request, headers, note.id, { body: "second writer's text" }, '"1"');
+
+    expect(first.status()).toBe(200);
+    expect(second.status()).toBe(412);
+    expect(await second.json()).toMatchObject({ error: { code: 'version_conflict' } });
+    const stored = await request.get(`/notes/${note.id}`, { headers });
+    expect(await stored.json()).toMatchObject({ body: "first writer's text", version: 2 });
+  });
+
+  it('lets the second writer reload, reapply their change and succeed', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+    await edit(request, headers, note.id, { title: 'First' }, '"1"');
+    expect((await edit(request, headers, note.id, { body: 'Mine' }, '"1"')).status()).toBe(412);
+
+    const retry = await edit(request, headers, note.id, { body: 'Mine' });
+
+    expect(retry.status()).toBe(200);
+    expect(await retry.json()).toMatchObject({ title: 'First', body: 'Mine', version: 3 });
+  });
+
+  it('refuses an edit that carries no If-Match', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await request.patch(`/notes/${note.id}`, { headers, data: { title: 'B' } });
+
+    expect(res.status()).toBe(428);
+    const reread = await request.get(`/notes/${note.id}`, { headers });
+    expect(await reread.json()).toEqual(note);
+  });
+
+  it('refuses a malformed If-Match', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await edit(request, headers, note.id, { title: 'B' }, '*');
+
+    expect(res.status()).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: 'invalid_if_match' } });
+  });
+
+  it('lets a client skip downloading a note that has not changed', async ({ request }) => {
+    const { headers } = await signedInUser(request);
+    const note = await createNote(request, headers);
+
+    const res = await request.get(`/notes/${note.id}`, {
+      headers: { ...headers, 'If-None-Match': '"1"' },
+    });
+
+    expect(res.status()).toBe(304);
+  });
+});

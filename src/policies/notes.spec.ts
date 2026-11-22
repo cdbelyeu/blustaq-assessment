@@ -1,6 +1,6 @@
 import type { Note } from '../db/notes';
 import type { User } from '../db/users';
-import { canRead } from './notes';
+import { canEdit, canRead } from './notes';
 
 const user = (id: string): User => ({
   id,
@@ -31,5 +31,19 @@ describe('note access policy', () => {
 
   it('does not let anyone read a note with no owner', () => {
     expect(canRead(user('ada'), note(null))).toBe(false);
+  });
+});
+
+describe('note edit policy', () => {
+  it('lets the owner edit their note', () => {
+    expect(canEdit(user('ada'), note('ada'))).toBe(true);
+  });
+
+  it("does not let anyone else edit someone's note", () => {
+    expect(canEdit(user('grace'), note('ada'))).toBe(false);
+  });
+
+  it('does not let anyone edit a note with no owner', () => {
+    expect(canEdit(user('ada'), note(null))).toBe(false);
   });
 });

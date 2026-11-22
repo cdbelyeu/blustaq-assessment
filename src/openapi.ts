@@ -9,6 +9,7 @@ import {
   noteResponse,
   noteSummaryResponse,
   sessionResponse,
+  updateNoteBody,
   updateUserBody,
   userResponse,
 } from './routes/schemas';
@@ -70,6 +71,17 @@ const sessionExample = {
 const errorExample = (code: string, message: string) => ({ error: { code, message } });
 const errorRef = (name: string): Json => ({ $ref: `#/components/responses/${name}` });
 const signedIn = [{ BearerAuth: [] }];
+
+const etagHeader: Json = {
+  ETag: {
+    description: "The note's version as a strong ETag. Send it back in `If-Match` when editing.",
+    schema: { type: 'string', example: '"1"' },
+  },
+};
+const withEtag = (base: Json, extra: Json = {}): Json => ({
+  ...base,
+  headers: { ...etagHeader, ...extra },
+});
 
 export function buildOpenApiDocument(): Json {
   return {
@@ -189,15 +201,12 @@ export function buildOpenApiDocument(): Json {
             }),
           },
           responses: {
-            '201': {
-              ...response('The new note.', ref('Note'), noteExample),
-              headers: {
-                Location: {
-                  description: 'Where to read the note.',
-                  schema: { type: 'string', example: `/notes/${noteExample.id}` },
-                },
+            '201': withEtag(response('The new note.', ref('Note'), noteExample), {
+              Location: {
+                description: 'Where to read the note.',
+                schema: { type: 'string', example: `/notes/${noteExample.id}` },
               },
-            },
+            }),
             '400': errorRef('ValidationFailed'),
             '401': errorRef('Unauthorized'),
             '413': errorRef('PayloadTooLarge'),
@@ -214,9 +223,50 @@ export function buildOpenApiDocument(): Json {
           security: signedIn,
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
-            '200': response('The note.', ref('Note'), noteExample),
+            '200': withEtag(response('The note.', ref('Note'), noteExample)),
             '401': errorRef('Unauthorized'),
             '404': errorRef('NoteNotFound'),
+          },
+        },
+        patch: {
+          tags: ['Notes'],
+          summary: 'Edit a note',
+          description:
+            'Send only the fields to change; at least one is required. **`If-Match` is required**: ' +
+            'send the `ETag` from the note you last read. If someone else has saved since, the ' +
+            'edit is refused with `412` and nothing is overwritten; fetch the note again and ' +
+            'reapply your change. `version` and `updatedAt` change only if a value actually ' +
+            'changed: saving the same content again is a no-op and returns the note as it was.',
+          security: signedIn,
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            {
+              name: 'If-Match',
+              in: 'header',
+              required: true,
+              description: 'The note\'s ETag from your last read, such as `"3"`.',
+              schema: { type: 'string', example: '"1"' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: json(ref('UpdateNoteRequest'), { title: 'Sprint planning (agreed)' }),
+          },
+          responses: {
+            '200': withEtag(
+              response('The note after the edit.', ref('Note'), {
+                ...noteExample,
+                title: 'Sprint planning (agreed)',
+                version: 2,
+                updatedAt: '2026-11-21T22:20:00.000Z',
+              }),
+            ),
+            '400': errorRef('ValidationFailed'),
+            '401': errorRef('Unauthorized'),
+            '404': errorRef('NoteNotFound'),
+            '412': errorRef('VersionConflict'),
+            '413': errorRef('PayloadTooLarge'),
+            '428': errorRef('PreconditionRequired'),
           },
         },
       },
@@ -291,6 +341,7 @@ export function buildOpenApiDocument(): Json {
         UpdateUserRequest: schemaOf(updateUserBody, 'input'),
         CreateSessionRequest: schemaOf(createSessionBody, 'input'),
         CreateNoteRequest: schemaOf(createNoteBody, 'input'),
+        UpdateNoteRequest: schemaOf(updateNoteBody, 'input'),
         Note: schemaOf(noteResponse, 'output'),
         NoteSummary: schemaOf(noteSummaryResponse, 'output'),
         NoteList: schemaOf(noteListResponse, 'output'),
@@ -319,6 +370,19 @@ export function buildOpenApiDocument(): Json {
           'No such note, or it is not yours.',
           ref('Error'),
           errorExample('note_not_found', 'Note not found'),
+        ),
+        VersionConflict: response(
+          'The note changed since the `ETag` you sent. Nothing was overwritten.',
+          ref('Error'),
+          errorExample(
+            'version_conflict',
+            'The note has changed since you loaded it. Fetch it again.',
+          ),
+        ),
+        PreconditionRequired: response(
+          '`If-Match` is missing.',
+          ref('Error'),
+          errorExample('precondition_required', "Send the note's ETag in If-Match"),
         ),
         PayloadTooLarge: response(
           'The request body is too large.',

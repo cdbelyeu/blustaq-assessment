@@ -4,6 +4,7 @@ import {
   LIST_NOTES_AFTER,
   LIST_NOTES_FIRST_PAGE,
   type NoteRepository,
+  VersionConflictError,
 } from './notes';
 import { createUserRepository, type User, type UserRepository } from './users';
 
@@ -180,6 +181,145 @@ describe('note repository', () => {
 
       expect(text).toContain('USING INDEX notes_owner_updated');
       expect(text).not.toContain('TEMP B-TREE');
+    });
+  });
+
+  describe('update', () => {
+    let now: Date;
+    let editable: NoteRepository;
+
+    beforeEach(() => {
+      now = new Date('2026-01-01T00:00:00.000Z');
+      editable = createNoteRepository(db, () => now);
+    });
+
+    const later = (minutes: number) => {
+      now = new Date(now.getTime() + minutes * 60_000);
+    };
+
+    it('changes the title alone and keeps the body', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'Old', body: 'keep me' });
+      later(5);
+
+      const updated = editable.update(note, { title: 'New' }, note.version);
+
+      expect(updated).toMatchObject({ title: 'New', body: 'keep me', version: 2 });
+    });
+
+    it('changes the body alone and keeps the title', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'Keep', body: 'old' });
+      later(5);
+
+      const updated = editable.update(note, { body: 'new' }, note.version);
+
+      expect(updated).toMatchObject({ title: 'Keep', body: 'new', version: 2 });
+    });
+
+    it('can clear the body', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'T', body: 'text' });
+      later(1);
+
+      expect(editable.update(note, { body: '' }, note.version).body).toBe('');
+    });
+
+    it('raises the version by one and moves the edit time, but not the creation time', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      later(5);
+
+      const first = editable.update(note, { title: 'B' }, note.version);
+      later(5);
+      const second = editable.update(first, { title: 'C' }, first.version);
+
+      expect([first.version, second.version]).toEqual([2, 3]);
+      expect(first.updatedAt).toBe('2026-01-01T00:05:00.000Z');
+      expect(second.updatedAt).toBe('2026-01-01T00:10:00.000Z');
+      expect(second.createdAt).toBe('2026-01-01T00:00:00.000Z');
+      expect(second.ownerId).toBe(owner.id);
+    });
+
+    it('stores what it returns', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      later(5);
+
+      const updated = editable.update(note, { title: 'B', body: 'b' }, note.version);
+
+      expect(editable.findById(note.id)).toEqual(updated);
+    });
+
+    it.each([
+      ['nothing', {}],
+      ['the same title', { title: 'Same' }],
+      ['the same body', { body: 'text' }],
+      ['both unchanged', { title: 'Same', body: 'text' }],
+    ])('changes nothing when given %s', (_label, patch) => {
+      const note = editable.create({ ownerId: owner.id, title: 'Same', body: 'text' });
+      later(5);
+
+      const result = editable.update(note, patch, note.version);
+
+      expect(result).toEqual(note);
+      expect(editable.findById(note.id)).toEqual(note);
+    });
+
+    it('raises the version once when one field changes and the other does not', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'Same', body: 'old' });
+      later(5);
+
+      const updated = editable.update(note, { title: 'Same', body: 'new' }, note.version);
+
+      expect(updated.version).toBe(2);
+    });
+
+    it('refuses a change from an out-of-date version, and changes nothing', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      later(1);
+      const current = editable.update(note, { title: 'B' }, note.version);
+      later(1);
+
+      expect(() => editable.update(current, { title: 'C' }, 1)).toThrow(VersionConflictError);
+
+      expect(editable.findById(note.id)).toEqual(current);
+    });
+
+    it('refuses an out-of-date version even when nothing would change', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      later(1);
+      const current = editable.update(note, { title: 'B' }, note.version);
+
+      expect(() => editable.update(current, { title: 'B' }, 1)).toThrow(VersionConflictError);
+    });
+
+    it('refuses a version from the future', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+
+      expect(() => editable.update(note, { title: 'B' }, 2)).toThrow(VersionConflictError);
+    });
+
+    it('catches a stale copy even when the version it carries looks current', () => {
+      const note = editable.create({ ownerId: owner.id, title: 'A', body: 'a' });
+      later(1);
+      editable.update(note, { title: 'B' }, note.version);
+      later(1);
+
+      // `note` is a stale copy: it still says version 1, but the stored note is at version 2.
+      expect(() => editable.update(note, { title: 'C' }, note.version)).toThrow(
+        VersionConflictError,
+      );
+      expect(editable.findById(note.id)).toMatchObject({ title: 'B', version: 2 });
+    });
+
+    it('moves an edited note to the top of the list', () => {
+      const a = editable.create({ ownerId: owner.id, title: 'A', body: '' });
+      later(1);
+      editable.create({ ownerId: owner.id, title: 'B', body: '' });
+      later(1);
+
+      editable.update(a, { title: 'A edited' }, a.version);
+
+      expect(editable.listByOwner(owner.id, 10).items.map((n) => n.title)).toEqual([
+        'A edited',
+        'B',
+      ]);
     });
   });
 });
